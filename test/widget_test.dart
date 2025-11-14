@@ -19,11 +19,13 @@ void main() {
     // We pass isLoggedIn: false to ensure the app starts on the LoginPage.
     await tester.pumpWidget(const MyApp(isLoggedIn: false));
 
-    // Verify that the login page shows the correct widgets.
-    expect(find.text('Login'), findsOneWidget);
-    expect(find.byType(TextField), findsNWidgets(2)); // Expect two text fields for email and password
-    expect(find.widgetWithText(ElevatedButton, 'Login'), findsOneWidget);
-    expect(find.text('Forgot Password?'), findsOneWidget);
-    expect(find.text('Not a member?'), findsOneWidget);
+    // Verify that the localized login page shows the correct widgets.
+    expect(find.text('Selamat datang'), findsOneWidget);
+    expect(find.text('Masuk ke akun anda untuk Melanjutkan'), findsOneWidget);
+    expect(find.byType(TextField), findsNWidgets(2)); // Email and password fields
+    expect(find.widgetWithText(ElevatedButton, 'Masuk'), findsOneWidget);
+    expect(find.text('Lupa Password?'), findsOneWidget);
+    expect(find.textContaining('Belum punya akun?'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Daftar Sekarang!'), findsOneWidget);
   });
 }

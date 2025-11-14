@@ -1,4 +1,7 @@
+// ignore_for_file: file_names
+
 import 'package:flutter/material.dart';
+import 'package:my_app/pages/ControlScreen.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -20,62 +23,14 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16.0),
-          children: [
-            // Header
-            const Text(
-              'BluVera',
-              style: TextStyle(
-                color: Colors.blue,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Dashboard',
-              style: TextStyle(
-                color: Colors.black,
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Text(
-              'Greenhouse Tel-U - Kolam 1',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 16,
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Status Kolam Card
-            _buildStatusKolamCard(),
-            const SizedBox(height: 16),
-
-            // Perhatian Ammonia Card
-            _buildAmmoniaWarningCard(),
-            const SizedBox(height: 16),
-
-            // Sensor Grid
-            _buildSensorGrid(),
-            const SizedBox(height: 24),
-
-            // Aksi Cepat
-            const Text(
-              'Aksi Cepat',
-              style: TextStyle(
-                color: Colors.black,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildAksiCepatGrid(),
-          ],
-        ),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          _buildDashboardView(),
+          const ControlScreen(),
+          _buildPlaceholder('Analytics segera hadir'),
+          _buildPlaceholder('Profile segera hadir'),
+        ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
@@ -310,6 +265,68 @@ class _HomePageState extends State<HomePage> {
             overflow: TextOverflow.ellipsis,
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDashboardView() {
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.all(16.0),
+        children: [
+          const Text(
+            'BluVera',
+            style: TextStyle(
+              color: Colors.blue,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Dashboard',
+            style: TextStyle(
+              color: Colors.black,
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          Text(
+            'Greenhouse Tel-U - Kolam 1',
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 24),
+          _buildStatusKolamCard(),
+          const SizedBox(height: 16),
+          _buildAmmoniaWarningCard(),
+          const SizedBox(height: 16),
+          _buildSensorGrid(),
+          const SizedBox(height: 24),
+          const Text(
+            'Aksi Cepat',
+            style: TextStyle(
+              color: Colors.black,
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          _buildAksiCepatGrid(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlaceholder(String message) {
+    return SafeArea(
+      child: Center(
+        child: Text(
+          message,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+        ),
       ),
     );
   }
