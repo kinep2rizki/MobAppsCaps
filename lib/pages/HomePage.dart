@@ -1,6 +1,7 @@
 // ignore_for_file: file_names
 
 import 'package:flutter/material.dart';
+import 'package:my_app/pages/AnalyticsScreen.dart';
 import 'package:my_app/pages/ControlScreen.dart';
 
 class HomePage extends StatefulWidget {
@@ -12,6 +13,19 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
+  static const Color _primary = Color(0xFF2563EB);
+  static const Color _background = Color(0xFFF9FAFB);
+  static const Color _surface = Color(0xFFFFFFFF);
+  static const Color _textPrimary = Color(0xFF1F2937);
+  static const Color _textSecondary = Color(0xFF6B7280);
+  static const Color _muted = Color(0xFF9CA3AF);
+  static const Color _success = Color(0xFF10B981);
+  static const Color _successBackground = Color(0xFFECFDF5);
+  static const Color _warning = Color(0xFFF97316);
+  static const Color _warningDeep = Color(0xFFD97706);
+  static const Color _warningBackground = Color(0xFFFDE68A);
+  static const Color _teal = Color(0xFF06B6D4);
+  static const Color _violet = Color(0xFFA855F7);
 
   void _onItemTapped(int index) {
     setState(() {
@@ -22,13 +36,13 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: _background,
       body: IndexedStack(
         index: _selectedIndex,
         children: [
           _buildDashboardView(),
           const ControlScreen(),
-          _buildPlaceholder('Analytics segera hadir'),
+          const AnalyticsScreen(),
           _buildPlaceholder('Profile segera hadir'),
         ],
       ),
@@ -52,8 +66,8 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
         currentIndex: _selectedIndex,
-        selectedItemColor: Colors.blue,
-        unselectedItemColor: Colors.grey,
+        selectedItemColor: _primary,
+        unselectedItemColor: _muted,
         showUnselectedLabels: true,
         onTap: _onItemTapped,
         type: BottomNavigationBarType.fixed,
@@ -65,7 +79,7 @@ class _HomePageState extends State<HomePage> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.blue,
+        color: _primary,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
@@ -87,13 +101,13 @@ class _HomePageState extends State<HomePage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.greenAccent,
+                  color: _successBackground,
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: const Text(
                   'Optimal',
                   style: TextStyle(
-                    color: Colors.black,
+                    color: _success,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -107,14 +121,14 @@ class _HomePageState extends State<HomePage> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Hari Budidaya', style: TextStyle(color: Colors.white70)),
+                  Text('Hari Budidaya', style: TextStyle(color: Colors.white)),
                   Text('45', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
                 ],
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text('Est. Panen', style: TextStyle(color: Colors.white70)),
+                  Text('Est. Panen', style: TextStyle(color: Colors.white)),
                   Text('75 Hari', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
                 ],
               ),
@@ -129,13 +143,13 @@ class _HomePageState extends State<HomePage> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.yellow[100],
+        color: _warningBackground,
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Row(
+      child: const Row(
         children: [
-          Icon(Icons.warning_amber_rounded, color: Colors.orange[700]),
-          const SizedBox(width: 12),
+          Icon(Icons.warning_amber_rounded, color: _warning),
+          SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -143,13 +157,14 @@ class _HomePageState extends State<HomePage> {
                 Text(
                   'Perhatian Ammonia',
                   style: TextStyle(
-                    color: Colors.orange[800],
+                    color: _warning,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+                SizedBox(height: 4),
                 Text(
                   'Level ammonia : 0.15 mg/L - Masih dalam batas aman',
-                  style: TextStyle(color: Colors.grey[700]),
+                  style: TextStyle(color: _warningDeep),
                 ),
               ],
             ),
@@ -168,10 +183,10 @@ class _HomePageState extends State<HomePage> {
       mainAxisSpacing: 16,
       childAspectRatio: 1.15, // kembali lebih proporsional namun masih aman dari overflow
       children: [
-        _buildSensorCard('Suhu Air', '30°C', Icons.thermostat, Colors.orange),
-        _buildSensorCard('Turbidity', '42 NTU', Icons.visibility, Colors.cyan),
-        _buildSensorCard('pH Level', '7.3', Icons.science_outlined, Colors.purple),
-        _buildSensorCard('DO', '7.3', Icons.air, Colors.green),
+        _buildSensorCard('Suhu Air', '30°C', Icons.thermostat, _warning),
+        _buildSensorCard('Turbidity', '42 NTU', Icons.visibility, _teal),
+        _buildSensorCard('pH Level', '7.3', Icons.science_outlined, _violet),
+        _buildSensorCard('DO', '7.3', Icons.air, _success),
       ],
     );
   }
@@ -180,11 +195,11 @@ class _HomePageState extends State<HomePage> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: _muted.withOpacity(0.15),
             spreadRadius: 1,
             blurRadius: 5,
           )
@@ -195,7 +210,7 @@ class _HomePageState extends State<HomePage> {
         children: [
           Icon(icon, color: iconColor, size: 28),
           const SizedBox(height: 8),
-          Text(title, style: TextStyle(color: Colors.grey[600])),
+          Text(title, style: const TextStyle(color: _textPrimary)),
           Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
           const SizedBox(height: 2),
           Row(
@@ -204,12 +219,12 @@ class _HomePageState extends State<HomePage> {
                 width: 8,
                 height: 8,
                 decoration: const BoxDecoration(
-                  color: Colors.green,
+                  color: _success,
                   shape: BoxShape.circle,
                 ),
               ),
               const SizedBox(width: 4),
-              const Text('Normal', style: TextStyle(color: Colors.green)),
+              const Text('Normal', style: TextStyle(color: _success)),
             ],
           ),
         ],
@@ -241,11 +256,11 @@ class _HomePageState extends State<HomePage> {
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: _muted.withOpacity(0.15),
             spreadRadius: 1,
             blurRadius: 5,
           )
@@ -254,13 +269,20 @@ class _HomePageState extends State<HomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: Colors.blue, size: 24),
+          Icon(icon, color: _primary, size: 24),
           const SizedBox(height: 10),
-          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          Text(
+            title,
+            style: const TextStyle(
+              color: _textPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 2),
           Text(
             subtitle,
-            style: TextStyle(color: Colors.grey[600], fontSize: 11),
+            style: const TextStyle(color: _textSecondary, fontSize: 11),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
@@ -277,7 +299,7 @@ class _HomePageState extends State<HomePage> {
           const Text(
             'BluVera',
             style: TextStyle(
-              color: Colors.blue,
+              color: _primary,
               fontSize: 24,
               fontWeight: FontWeight.bold,
             ),
@@ -286,15 +308,15 @@ class _HomePageState extends State<HomePage> {
           const Text(
             'Dashboard',
             style: TextStyle(
-              color: Colors.black,
+              color: _textPrimary,
               fontSize: 28,
               fontWeight: FontWeight.bold,
             ),
           ),
-          Text(
+          const Text(
             'Greenhouse Tel-U - Kolam 1',
             style: TextStyle(
-              color: Colors.grey[600],
+              color: _textSecondary,
               fontSize: 16,
             ),
           ),
@@ -308,7 +330,7 @@ class _HomePageState extends State<HomePage> {
           const Text(
             'Aksi Cepat',
             style: TextStyle(
-              color: Colors.black,
+              color: _textPrimary,
               fontSize: 22,
               fontWeight: FontWeight.bold,
             ),

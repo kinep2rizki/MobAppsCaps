@@ -455,7 +455,10 @@ class _ControlScreenState extends State<ControlScreen> {
 						padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
 						shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
 					),
-					child: const Text('Update Stok'),
+					child: const Text(
+						'Update Stok',
+						style: TextStyle(color: Colors.white),
+					),
 				),
 			);
 		}
