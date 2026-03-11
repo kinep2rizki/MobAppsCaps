@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:my_app/pages/AnalyticsScreen.dart';
 import 'package:my_app/pages/ControlScreen.dart';
+import 'package:my_app/pages/ProfileScreen.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -43,7 +44,7 @@ class _HomePageState extends State<HomePage> {
           _buildDashboardView(),
           const ControlScreen(),
           const AnalyticsScreen(),
-          _buildPlaceholder('Profile segera hadir'),
+          const ProfileScreen(),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -69,6 +70,7 @@ class _HomePageState extends State<HomePage> {
         selectedItemColor: _primary,
         unselectedItemColor: _muted,
         showUnselectedLabels: true,
+        backgroundColor: _surface,
         onTap: _onItemTapped,
         type: BottomNavigationBarType.fixed,
       ),
@@ -338,17 +340,6 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(height: 16),
           _buildAksiCepatGrid(),
         ],
-      ),
-    );
-  }
-
-  Widget _buildPlaceholder(String message) {
-    return SafeArea(
-      child: Center(
-        child: Text(
-          message,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-        ),
       ),
     );
   }

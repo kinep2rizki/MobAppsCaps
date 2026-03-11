@@ -1,6 +1,9 @@
 // ignore_for_file: file_names
 
 import 'package:flutter/material.dart';
+import 'package:my_app/pages/ProfilePages/ManajemenKolam.dart';
+import 'package:my_app/pages/ProfilePages/AlertDanNotifikasi.dart';
+import 'package:my_app/pages/ProfilePages/RiwayatData.dart';
 
 class ProfileScreen extends StatelessWidget {
 	const ProfileScreen({super.key});
@@ -31,7 +34,7 @@ class ProfileScreen extends StatelessWidget {
 							const SizedBox(height: 20),
 							_buildProfileCard(),
 							const SizedBox(height: 20),
-							_buildMenuCard(),
+							_buildMenuCard(context),
 							const SizedBox(height: 24),
 							_buildLogoutButton(),
 						],
@@ -119,22 +122,25 @@ class ProfileScreen extends StatelessWidget {
 		);
 	}
 
-	Widget _buildMenuCard() {
+	Widget _buildMenuCard(BuildContext context) {
 		final items = <_MenuItemData>[
 			const _MenuItemData(
 				icon: Icons.waves,
 				title: 'Manajemen Kolam',
 				subtitle: '3 Kolam Aktif',
+				isPondManagement: true,
 			),
 			const _MenuItemData(
 				icon: Icons.notifications_active_outlined,
 				title: 'Notifikasi & Alert',
 				subtitle: 'Atur peringatan sistem',
+				isNotificationAlert: true,
 			),
 			const _MenuItemData(
 				icon: Icons.history,
 				title: 'Riwayat Data',
 				subtitle: 'Lihat data historis',
+				isRiwayatData: true,
 			),
 			const _MenuItemData(
 				icon: Icons.water_drop_outlined,
@@ -161,13 +167,13 @@ class ProfileScreen extends StatelessWidget {
 			),
 			child: Column(
 				children: items
-						.map((item) => _buildMenuItem(item))
+					.map((item) => _buildMenuItem(context, item))
 						.toList(),
 			),
 		);
 	}
 
-	Widget _buildMenuItem(_MenuItemData item) {
+	Widget _buildMenuItem(BuildContext context, _MenuItemData item) {
 		return Column(
 			children: [
 				ListTile(
@@ -193,7 +199,27 @@ class ProfileScreen extends StatelessWidget {
 						style: const TextStyle(color: _textSecondary),
 					),
 					trailing: const Icon(Icons.chevron_right, color: _muted),
-					onTap: () {},
+					onTap: () {
+						if (item.isPondManagement) {
+							Navigator.of(context).push(
+								MaterialPageRoute(
+									builder: (_) => const ManajemenKolamPage(),
+								),
+							);
+						} else if (item.isNotificationAlert) {
+							Navigator.of(context).push(
+								MaterialPageRoute(
+									builder: (_) => const AlertDanNotifikasiPage(),
+								),
+							);
+						} else if (item.isRiwayatData) {
+							Navigator.of(context).push(
+								MaterialPageRoute(
+									builder: (_) => const RiwayatDataPage(),
+								),
+							);
+						}
+					},
 				),
 				if (item != _menuDividerSentinel)
 					const Divider(height: 1, thickness: 1, color: _border),
@@ -223,11 +249,17 @@ class _MenuItemData {
 		required this.icon,
 		required this.title,
 		required this.subtitle,
+		this.isPondManagement = false,
+		this.isNotificationAlert = false,
+		this.isRiwayatData = false,
 	});
 
 	final IconData icon;
 	final String title;
 	final String subtitle;
+	final bool isPondManagement;
+	final bool isNotificationAlert;
+	final bool isRiwayatData;
 }
 
 const _MenuItemData _menuDividerSentinel =
