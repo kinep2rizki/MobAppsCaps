@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:my_app/pages/ProfilePages/ManajemenKolam.dart';
 import 'package:my_app/pages/ProfilePages/AlertDanNotifikasi.dart';
 import 'package:my_app/pages/ProfilePages/RiwayatData.dart';
+import 'package:my_app/pages/ProfilePages/KalibrasiSensor.dart';
 
 class ProfileScreen extends StatelessWidget {
 	const ProfileScreen({super.key});
@@ -146,6 +147,7 @@ class ProfileScreen extends StatelessWidget {
 				icon: Icons.water_drop_outlined,
 				title: 'Kalibrasi Sensor',
 				subtitle: 'Terakhir : 2 hari lalu',
+				isKalibrasiSensor: true,
 			),
 			const _MenuItemData(
 				icon: Icons.person_outline,
@@ -218,6 +220,12 @@ class ProfileScreen extends StatelessWidget {
 									builder: (_) => const RiwayatDataPage(),
 								),
 							);
+						} else if (item.isKalibrasiSensor) {
+							Navigator.of(context).push(
+								MaterialPageRoute(
+									builder: (_) => const KalibrasiSensorPage(),
+								),
+							);
 						}
 					},
 				),
@@ -252,6 +260,7 @@ class _MenuItemData {
 		this.isPondManagement = false,
 		this.isNotificationAlert = false,
 		this.isRiwayatData = false,
+		this.isKalibrasiSensor = false,
 	});
 
 	final IconData icon;
@@ -260,6 +269,7 @@ class _MenuItemData {
 	final bool isPondManagement;
 	final bool isNotificationAlert;
 	final bool isRiwayatData;
+	final bool isKalibrasiSensor;
 }
 
 const _MenuItemData _menuDividerSentinel =
