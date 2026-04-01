@@ -5,6 +5,7 @@ import 'package:my_app/pages/ProfilePages/ManajemenKolam.dart';
 import 'package:my_app/pages/ProfilePages/AlertDanNotifikasi.dart';
 import 'package:my_app/pages/ProfilePages/RiwayatData.dart';
 import 'package:my_app/pages/ProfilePages/KalibrasiSensor.dart';
+import 'package:my_app/pages/ProfilePages/EditProfile.dart';
 
 class ProfileScreen extends StatelessWidget {
 	const ProfileScreen({super.key});
@@ -153,6 +154,7 @@ class ProfileScreen extends StatelessWidget {
 				icon: Icons.person_outline,
 				title: 'Edit Profile',
 				subtitle: 'Perbarui informasi akun',
+				isEditProfile: true,
 			),
 			const _MenuItemData(
 				icon: Icons.settings_outlined,
@@ -226,6 +228,12 @@ class ProfileScreen extends StatelessWidget {
 									builder: (_) => const KalibrasiSensorPage(),
 								),
 							);
+						} else if (item.isEditProfile) {
+							Navigator.of(context).push(
+								MaterialPageRoute(
+									builder: (_) => const EditProfilePage(),
+								),
+							);
 						}
 					},
 				),
@@ -261,6 +269,7 @@ class _MenuItemData {
 		this.isNotificationAlert = false,
 		this.isRiwayatData = false,
 		this.isKalibrasiSensor = false,
+		this.isEditProfile = false,
 	});
 
 	final IconData icon;
@@ -270,6 +279,7 @@ class _MenuItemData {
 	final bool isNotificationAlert;
 	final bool isRiwayatData;
 	final bool isKalibrasiSensor;
+	final bool isEditProfile;
 }
 
 const _MenuItemData _menuDividerSentinel =
