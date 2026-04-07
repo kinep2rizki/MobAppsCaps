@@ -4,9 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:my_app/pages/AnalyticsScreen.dart';
 import 'package:my_app/pages/ControlScreen.dart';
 import 'package:my_app/pages/ProfileScreen.dart';
+import 'package:my_app/Services/api_service.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({
+    super.key,
+    this.fetchSensorData = ApiService.getSensorData,
+  });
+
+  final Future<List<dynamic>> Function() fetchSensorData;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -14,6 +20,8 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
+  late Future<List<dynamic>> futureData;
+  Map<String, dynamic>? _lastSensorData;
   static const Color _primary = Color(0xFF2563EB);
   static const Color _background = Color(0xFFF9FAFB);
   static const Color _surface = Color(0xFFFFFFFF);
@@ -27,6 +35,26 @@ class _HomePageState extends State<HomePage> {
   static const Color _warningBackground = Color(0xFFFDE68A);
   static const Color _teal = Color(0xFF06B6D4);
   static const Color _violet = Color(0xFFA855F7);
+
+  @override
+  void initState() {
+    super.initState();
+    futureData = widget.fetchSensorData();
+
+    Future.delayed(const Duration(seconds: 5), refreshData);
+  }
+
+  void refreshData() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      futureData = widget.fetchSensorData();
+    });
+
+    Future.delayed(const Duration(seconds: 5), refreshData);
+  }
 
   void _onItemTapped(int index) {
     setState(() {
@@ -141,32 +169,101 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildAmmoniaWarningCard() {
+  Map<String, dynamic>? _asStringKeyedMap(dynamic value) {
+    if (value is! Map) {
+      return null;
+    }
+
+    return value.map(
+      (key, dynamic nestedValue) => MapEntry(key.toString(), nestedValue),
+    );
+  }
+
+  Map<String, dynamic>? _getLatestSensorData(List<dynamic> rawData) {
+    if (rawData.isEmpty) {
+      return null;
+    }
+
+    final latestEntry = _asStringKeyedMap(rawData.last);
+    if (latestEntry == null) {
+      return null;
+    }
+
+    final nestedData = _asStringKeyedMap(latestEntry['data']);
+    return nestedData ?? latestEntry;
+  }
+
+  double? _toDouble(dynamic value) {
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    if (value is String) {
+      return double.tryParse(value);
+    }
+
+    return null;
+  }
+
+  double? _extractNumericValue(Map<String, dynamic> data, List<String> keys) {
+    final normalizedKeys = keys.map((key) => key.toLowerCase()).toSet();
+
+    for (final entry in data.entries) {
+      if (normalizedKeys.contains(entry.key.toLowerCase())) {
+        return _toDouble(entry.value);
+      }
+    }
+
+    return null;
+  }
+
+  String _formatValue(double? value, {String unit = '', int precision = 1}) {
+    if (value == null) {
+      return '-';
+    }
+
+    return '${value.toStringAsFixed(precision)}$unit';
+  }
+
+  Widget _buildAmmoniaWarningCard(Map<String, dynamic>? sensorData) {
+    final ammoniaLevel = sensorData == null
+        ? null
+        : _extractNumericValue(sensorData, ['ammonia', 'amonia', 'nh3']);
+
+    final statusText = ammoniaLevel == null
+        ? 'Data ammonia belum tersedia'
+        : ammoniaLevel <= 0.2
+            ? 'Masih dalam batas aman'
+            : 'Melebihi batas aman';
+
+    final ammoniaText =
+        ammoniaLevel == null ? '-' : ammoniaLevel.toStringAsFixed(2);
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: _warningBackground,
         borderRadius: BorderRadius.circular(16),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          Icon(Icons.warning_amber_rounded, color: _warning),
-          SizedBox(width: 12),
+          const Icon(Icons.warning_amber_rounded, color: _warning),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'Perhatian Ammonia',
                   style: TextStyle(
                     color: _warning,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                SizedBox(height: 4),
+                const SizedBox(height: 4),
                 Text(
-                  'Level ammonia : 0.15 mg/L - Masih dalam batas aman',
-                  style: TextStyle(color: _warningDeep),
+                  'Level ammonia : $ammoniaText mg/L - $statusText',
+                  style: const TextStyle(color: _warningDeep),
                 ),
               ],
             ),
@@ -176,19 +273,96 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildSensorGrid() {
+  Widget _buildDataErrorCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Gagal mengambil data sensor dari database.',
+            style: TextStyle(
+              color: Colors.red,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ElevatedButton(
+            onPressed: refreshData,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _primary,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Coba Lagi'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSensorGrid(Map<String, dynamic>? sensorData) {
+    final suhuAir = sensorData == null
+        ? null
+        : _extractNumericValue(sensorData, [
+            'suhu',
+            'suhu_air',
+            'temperature',
+            'temp',
+            'water_temperature',
+          ]);
+
+    final turbidity = sensorData == null
+        ? null
+        : _extractNumericValue(sensorData, ['turbidity', 'kekeruhan', 'ntu']);
+
+    final phLevel = sensorData == null
+        ? null
+        : _extractNumericValue(sensorData, ['ph', 'ph_level']);
+
+    final doLevel = sensorData == null
+        ? null
+        : _extractNumericValue(sensorData, [
+            'do',
+            'dissolved_oxygen',
+            'oxygen',
+          ]);
+
     return GridView.count(
       crossAxisCount: 2,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       crossAxisSpacing: 16,
       mainAxisSpacing: 16,
-      childAspectRatio: 1.15, // kembali lebih proporsional namun masih aman dari overflow
+      childAspectRatio: 1.15,
       children: [
-        _buildSensorCard('Suhu Air', '30°C', Icons.thermostat, _warning),
-        _buildSensorCard('Turbidity', '42 NTU', Icons.visibility, _teal),
-        _buildSensorCard('pH Level', '7.3', Icons.science_outlined, _violet),
-        _buildSensorCard('DO', '7.3', Icons.air, _success),
+        _buildSensorCard(
+          'Suhu Air',
+          _formatValue(suhuAir, unit: '°C'),
+          Icons.thermostat,
+          _warning,
+        ),
+        _buildSensorCard(
+          'Turbidity',
+          _formatValue(turbidity, unit: ' NTU'),
+          Icons.visibility,
+          _teal,
+        ),
+        _buildSensorCard(
+          'pH Level',
+          _formatValue(phLevel, precision: 2),
+          Icons.science_outlined,
+          _violet,
+        ),
+        _buildSensorCard(
+          'DO',
+          _formatValue(doLevel, unit: ' mg/L'),
+          Icons.air,
+          _success,
+        ),
       ],
     );
   }
@@ -235,7 +409,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildAksiCepatGrid() {
-    // Solusi sederhana: Row dengan kartu yang memiliki tinggi minimum tetap
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -251,7 +424,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildAksiCard(String title, String subtitle, IconData icon) {
-    // Kartu dengan constraints minimum untuk menghindari overflow
     return Container(
       constraints: const BoxConstraints(
         minHeight: 110,
@@ -295,51 +467,78 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildDashboardView() {
     return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.all(16.0),
-        children: [
-          const Text(
-            'BluVera',
-            style: TextStyle(
-              color: _primary,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Dashboard',
-            style: TextStyle(
-              color: _textPrimary,
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const Text(
-            'Greenhouse Tel-U - Kolam 1',
-            style: TextStyle(
-              color: _textSecondary,
-              fontSize: 16,
-            ),
-          ),
-          const SizedBox(height: 24),
-          _buildStatusKolamCard(),
-          const SizedBox(height: 16),
-          _buildAmmoniaWarningCard(),
-          const SizedBox(height: 16),
-          _buildSensorGrid(),
-          const SizedBox(height: 24),
-          const Text(
-            'Aksi Cepat',
-            style: TextStyle(
-              color: _textPrimary,
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildAksiCepatGrid(),
-        ],
+      child: FutureBuilder<List<dynamic>>(
+        future: futureData,
+        builder: (context, snapshot) {
+          final freshData = snapshot.hasData
+              ? _getLatestSensorData(snapshot.data!)
+              : null;
+
+          if (freshData != null) {
+            _lastSensorData = freshData;
+          }
+
+          final sensorData = freshData ?? _lastSensorData;
+
+          return ListView(
+            padding: const EdgeInsets.all(16.0),
+            children: [
+              const Text(
+                'BluVera',
+                style: TextStyle(
+                  color: _primary,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Dashboard',
+                style: TextStyle(
+                  color: _textPrimary,
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Text(
+                'Greenhouse Tel-U - Kolam 1',
+                style: TextStyle(
+                  color: _textSecondary,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 24),
+              _buildStatusKolamCard(),
+              const SizedBox(height: 16),
+              if (snapshot.connectionState == ConnectionState.waiting &&
+                  sensorData == null)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else if (snapshot.hasError && sensorData == null)
+                _buildDataErrorCard()
+              else ...[
+                _buildAmmoniaWarningCard(sensorData),
+                const SizedBox(height: 16),
+                _buildSensorGrid(sensorData),
+              ],
+              const SizedBox(height: 24),
+              const Text(
+                'Aksi Cepat',
+                style: TextStyle(
+                  color: _textPrimary,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _buildAksiCepatGrid(),
+            ],
+          );
+        },
       ),
     );
   }

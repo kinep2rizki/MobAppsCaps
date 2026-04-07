@@ -288,7 +288,7 @@ class AnalyticsScreen extends StatelessWidget {
 							Icon(Icons.show_chart, color: _primary),
 							SizedBox(width: 8),
 							Text(
-								'Aksi Cepat',
+								'Saran Tindakan Cepat',
 								style: TextStyle(
 									color: _textPrimary,
 									fontSize: 18,

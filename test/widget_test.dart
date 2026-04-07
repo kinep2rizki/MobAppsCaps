@@ -8,6 +8,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:my_app/main.dart';
+import 'package:my_app/pages/HomePage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -27,5 +28,62 @@ void main() {
     expect(find.text('Lupa Password?'), findsOneWidget);
     expect(find.textContaining('Belum punya akun?'), findsOneWidget);
     expect(find.widgetWithText(TextButton, 'Daftar Sekarang!'), findsOneWidget);
+  });
+
+  testWidgets('Home page loads sensor data and refreshes automatically', (WidgetTester tester) async {
+    int callCount = 0;
+
+    Future<List<dynamic>> fakeSensorSource() async {
+      callCount++;
+
+      if (callCount == 1) {
+        return [
+          {
+            'temperature': 30.0,
+            'turbidity': 42.0,
+            'ph': 7.3,
+            'do': 6.8,
+            'ammonia': 0.15,
+          }
+        ];
+      }
+
+      return [
+        {
+          'temperature': 31.0,
+          'turbidity': 45.0,
+          'ph': 7.1,
+          'do': 6.5,
+          'ammonia': 0.22,
+        }
+      ];
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(fetchSensorData: fakeSensorSource),
+      ),
+    );
+
+    await tester.pump();
+
+    expect(find.text('30.0°C'), findsOneWidget);
+    expect(find.text('42.0 NTU'), findsOneWidget);
+    expect(find.text('7.30'), findsOneWidget);
+    expect(find.text('6.8 mg/L'), findsOneWidget);
+    expect(find.textContaining('0.15 mg/L'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+
+    expect(find.text('31.0°C'), findsOneWidget);
+    expect(find.text('45.0 NTU'), findsOneWidget);
+    expect(find.text('7.10'), findsOneWidget);
+    expect(find.text('6.5 mg/L'), findsOneWidget);
+    expect(find.textContaining('0.22 mg/L'), findsOneWidget);
+    expect(callCount, greaterThanOrEqualTo(2));
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 6));
   });
 }
