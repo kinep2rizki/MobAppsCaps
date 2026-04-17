@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String baseUrl = 'http://10.0.2.2:3000';
+  static const String baseUrl = 'https://haematological-jovan-bloomless.ngrok-free.dev';
 
   static Future<List<dynamic>> getSensorData({
     http.Client? client,
@@ -13,7 +13,7 @@ class ApiService {
 
     try {
       final response = await httpClient.get(
-        Uri.parse('${overrideBaseUrl ?? baseUrl}/sensor'),
+        Uri.parse('${overrideBaseUrl ?? baseUrl}/sensor-data/history'),
       );
 
       if (response.statusCode != 200) {

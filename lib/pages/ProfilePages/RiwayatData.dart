@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:my_app/Services/api_service.dart';
+import 'dart:math' as math;
 import 'dart:ui';
 
 class RiwayatDataPage extends StatefulWidget {
-  const RiwayatDataPage({super.key});
+  const RiwayatDataPage({
+    super.key,
+    this.fetchSensorData = ApiService.getSensorData,
+  });
+
+  final Future<List<dynamic>> Function() fetchSensorData;
 
   @override
   State<RiwayatDataPage> createState() => _RiwayatDataPageState();
@@ -24,12 +31,38 @@ class _RiwayatDataPageState extends State<RiwayatDataPage> {
   int _selectedPeriod = 0;
   final List<String> _periods = ['7 Hari', '30 Hari', '90 Hari'];
   String _selectedKolam = 'Semua Kolam';
+  bool _isChartLoading = true;
+  String? _chartError;
+  Map<String, List<double>> _metricSeries = {};
+  String? _selectedMetricKey;
+  DateTime? _lastUpdatedAt;
   final List<String> _kolamOptions = [
     'Semua Kolam',
     'Kolam A1',
     'Kolam A2',
     'Kolam A3',
   ];
+
+  static const Set<String> _excludedMetricKeys = {
+    'id',
+    'kolam',
+    'kolam_id',
+    'pond',
+    'pond_id',
+    'pool',
+    'farm_id',
+    'timestamp',
+    'date',
+    'time',
+    'created_at',
+    'updated_at',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshChartData();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -192,10 +225,316 @@ class _RiwayatDataPageState extends State<RiwayatDataPage> {
             return DropdownMenuItem(value: kolam, child: Text(kolam));
           }).toList(),
           onChanged: (val) {
-            if (val != null) setState(() => _selectedKolam = val);
+            if (val != null && val != _selectedKolam) {
+              setState(() => _selectedKolam = val);
+              _refreshChartData(showLoading: false);
+            }
           },
         ),
       ),
+    );
+  }
+
+  Future<void> _refreshChartData({bool showLoading = true}) async {
+    if (showLoading && mounted) {
+      setState(() {
+        _isChartLoading = true;
+        _chartError = null;
+      });
+    }
+
+    try {
+      final response = await widget.fetchSensorData();
+      final parsedSeries = _buildMetricSeries(response);
+      final sortedKeys = parsedSeries.keys.toList()..sort();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _metricSeries = parsedSeries;
+        _lastUpdatedAt = DateTime.now();
+        _isChartLoading = false;
+
+        if (sortedKeys.isEmpty) {
+          _selectedMetricKey = null;
+          _chartError = 'Data sensor dari database belum tersedia.';
+        } else {
+          _selectedMetricKey = sortedKeys.contains(_selectedMetricKey)
+              ? _selectedMetricKey
+              : sortedKeys.first;
+          _chartError = null;
+        }
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isChartLoading = false;
+        _chartError = 'Gagal mengambil data sensor dari database.';
+      });
+    }
+  }
+
+  Map<String, dynamic>? _asStringKeyedMap(dynamic value) {
+    if (value is! Map) {
+      return null;
+    }
+
+    return value.map(
+      (key, nestedValue) => MapEntry(key.toString(), nestedValue),
+    );
+  }
+
+  Map<String, dynamic>? _extractRowData(dynamic entry) {
+    final entryMap = _asStringKeyedMap(entry);
+    if (entryMap == null) {
+      return null;
+    }
+
+    final nestedData = _asStringKeyedMap(entryMap['data']);
+    return nestedData ?? entryMap;
+  }
+
+  bool _rowMatchesSelectedKolam(Map<String, dynamic> row) {
+    if (_selectedKolam == 'Semua Kolam') {
+      return true;
+    }
+
+    final selected = _selectedKolam.toLowerCase();
+    const lookupKeys = ['kolam', 'kolam_id', 'pond', 'pond_id', 'pool'];
+
+    bool hasKolamMetadata = false;
+    for (final key in lookupKeys) {
+      final value = row[key];
+      if (value == null) {
+        continue;
+      }
+
+      hasKolamMetadata = true;
+      if (value.toString().toLowerCase().contains(selected)) {
+        return true;
+      }
+    }
+
+    return !hasKolamMetadata;
+  }
+
+  double? _toDouble(dynamic value) {
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    if (value is String) {
+      return double.tryParse(value);
+    }
+
+    return null;
+  }
+
+  Map<String, List<double>> _buildMetricSeries(List<dynamic> response) {
+    final series = <String, List<double>>{};
+
+    for (final entry in response) {
+      final row = _extractRowData(entry);
+      if (row == null || !_rowMatchesSelectedKolam(row)) {
+        continue;
+      }
+
+      for (final item in row.entries) {
+        final key = item.key.toLowerCase();
+        if (_excludedMetricKeys.contains(key)) {
+          continue;
+        }
+
+        final parsedValue = _toDouble(item.value);
+        if (parsedValue == null) {
+          continue;
+        }
+
+        series.putIfAbsent(key, () => []).add(parsedValue);
+      }
+    }
+
+    return series;
+  }
+
+  int _chartPointCount() {
+    switch (_selectedPeriod) {
+      case 0:
+        return 7;
+      case 1:
+        return 14;
+      default:
+        return 30;
+    }
+  }
+
+  List<double> _currentSeriesValues() {
+    final key = _selectedMetricKey;
+    if (key == null) {
+      return const [];
+    }
+
+    final values = _metricSeries[key] ?? const [];
+    final pointCount = _chartPointCount();
+    if (values.length <= pointCount) {
+      return values;
+    }
+
+    return values.sublist(values.length - pointCount);
+  }
+
+  String _formatChartTime() {
+    if (_lastUpdatedAt == null) {
+      return '-';
+    }
+
+    final dt = _lastUpdatedAt!;
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final mm = dt.minute.toString().padLeft(2, '0');
+    return '$hh:$mm';
+  }
+
+  String _metricDisplayName(String key) {
+    switch (key) {
+      case 'temperature':
+      case 'temp':
+      case 'suhu':
+      case 'suhu_air':
+      case 'water_temperature':
+        return 'Suhu';
+      case 'ph':
+      case 'ph_level':
+        return 'pH';
+      case 'do':
+      case 'dissolved_oxygen':
+      case 'oxygen':
+        return 'DO';
+      case 'turbidity':
+      case 'kekeruhan':
+      case 'ntu':
+        return 'Turbidity';
+      case 'ammonia':
+      case 'amonia':
+      case 'nh3':
+        return 'Amonia';
+      default:
+        final parts = key.split('_');
+        return parts
+            .map(
+              (part) => part.isEmpty
+                  ? part
+                  : '${part[0].toUpperCase()}${part.substring(1)}',
+            )
+            .join(' ');
+    }
+  }
+
+  int _metricPrecision(String key) {
+    const twoPrecisionKeys = {
+      'ph',
+      'ph_level',
+      'ammonia',
+      'amonia',
+      'nh3',
+    };
+    return twoPrecisionKeys.contains(key) ? 2 : 1;
+  }
+
+  String _metricUnit(String key) {
+    const units = {
+      'temperature': 'C',
+      'temp': 'C',
+      'suhu': 'C',
+      'suhu_air': 'C',
+      'water_temperature': 'C',
+      'do': 'mg/L',
+      'dissolved_oxygen': 'mg/L',
+      'oxygen': 'mg/L',
+      'turbidity': 'NTU',
+      'kekeruhan': 'NTU',
+      'ntu': 'NTU',
+      'ammonia': 'mg/L',
+      'amonia': 'mg/L',
+      'nh3': 'mg/L',
+    };
+
+    return units[key] ?? '';
+  }
+
+  String _formatMetricValue(double value, String key) {
+    final valueText = value.toStringAsFixed(_metricPrecision(key));
+    final unit = _metricUnit(key);
+    if (unit.isEmpty) {
+      return valueText;
+    }
+    return '$valueText $unit';
+  }
+
+  Color _metricColor(String key) {
+    switch (key) {
+      case 'temperature':
+      case 'temp':
+      case 'suhu':
+      case 'suhu_air':
+      case 'water_temperature':
+        return const Color(0xFFEF4444);
+      case 'ph':
+      case 'ph_level':
+        return const Color(0xFF8B5CF6);
+      case 'do':
+      case 'dissolved_oxygen':
+      case 'oxygen':
+        return const Color(0xFF06B6D4);
+      case 'turbidity':
+      case 'kekeruhan':
+      case 'ntu':
+        return const Color(0xFFF59E0B);
+      case 'ammonia':
+      case 'amonia':
+      case 'nh3':
+        return const Color(0xFFF97316);
+      default:
+        return _primary;
+    }
+  }
+
+  Widget _buildMetricSelector() {
+    final keys = _metricSeries.keys.toList()..sort();
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: keys.map((key) {
+        final isSelected = key == _selectedMetricKey;
+        final chipColor = _metricColor(key);
+
+        return ChoiceChip(
+          label: Text(_metricDisplayName(key)),
+          selected: isSelected,
+          onSelected: (_) {
+            setState(() {
+              _selectedMetricKey = key;
+            });
+          },
+          side: BorderSide(
+            color: isSelected ? chipColor.withOpacity(0.4) : _border,
+          ),
+          selectedColor: chipColor.withOpacity(0.16),
+          backgroundColor: _surface,
+          labelStyle: TextStyle(
+            color: isSelected ? chipColor : _textSecondary,
+            fontWeight: FontWeight.w700,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -319,6 +658,11 @@ class _RiwayatDataPageState extends State<RiwayatDataPage> {
   }
 
   Widget _buildGrafikCard() {
+    final selectedKey = _selectedMetricKey;
+    final chartValues = _currentSeriesValues();
+    final hasData = selectedKey != null && chartValues.isNotEmpty;
+    final activeColor = selectedKey == null ? _primary : _metricColor(selectedKey);
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -349,34 +693,153 @@ class _RiwayatDataPageState extends State<RiwayatDataPage> {
                   fontWeight: FontWeight.w700,
                 ),
               ),
+              const Spacer(),
+              IconButton(
+                onPressed: () => _refreshChartData(showLoading: false),
+                tooltip: 'Refresh data sensor',
+                icon: const Icon(Icons.refresh, color: _textSecondary),
+              ),
             ],
           ),
-          const SizedBox(height: 30),
-          Center(
-            child: Icon(
-              Icons.bar_chart_outlined,
-              size: 56,
-              color: _primary.withOpacity(0.25),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Center(
-            child: Text(
-              'Visualisasi grafik akan ditampilkan di sini',
+          const SizedBox(height: 10),
+          if (_isChartLoading && !hasData)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 32),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (!hasData)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: _surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _chartError ?? 'Belum ada data sensor yang bisa divisualisasikan.',
+                    style: const TextStyle(
+                      color: _textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  ElevatedButton(
+                    onPressed: _refreshChartData,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _primary,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('Coba Muat Ulang'),
+                  ),
+                ],
+              ),
+            )
+          else ...[
+            const Text(
+              'Pilih Parameter Sensor',
               style: TextStyle(
-                color: _textPrimary.withOpacity(0.65),
+                color: _textPrimary,
                 fontSize: 13,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w700,
               ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Center(
-            child: Text(
-              'Data ${_periods[_selectedPeriod].toLowerCase()} terakhir - $_selectedKolam',
-              style: const TextStyle(color: _muted, fontSize: 12),
+            const SizedBox(height: 10),
+            _buildMetricSelector(),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: _surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Parameter aktif: ${_metricDisplayName(selectedKey)}',
+                    style: TextStyle(
+                      color: activeColor,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Update terakhir: ${_formatChartTime()}',
+                    style: const TextStyle(
+                      color: _textSecondary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+            const SizedBox(height: 12),
+            Container(
+              height: 190,
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+              decoration: BoxDecoration(
+                color: _surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _border),
+              ),
+              child: CustomPaint(
+                painter: _SensorLineChartPainter(
+                  values: chartValues,
+                  lineColor: activeColor,
+                  gridColor: _border.withOpacity(0.65),
+                ),
+                child: const SizedBox.expand(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Text(
+                  'Min: ${_formatMetricValue(chartValues.reduce(math.min), selectedKey)}',
+                  style: const TextStyle(
+                    color: _textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  'Maks: ${_formatMetricValue(chartValues.reduce(math.max), selectedKey)}',
+                  style: const TextStyle(
+                    color: _textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Nilai terbaru: ${_formatMetricValue(chartValues.last, selectedKey)}',
+              style: const TextStyle(
+                color: _textPrimary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Center(
+              child: Text(
+                'Data ${_periods[_selectedPeriod].toLowerCase()} terakhir - $_selectedKolam',
+                style: const TextStyle(color: _muted, fontSize: 12),
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
         ],
       ),
@@ -734,4 +1197,105 @@ class _TimelineItem {
   final String date;
   final String time;
   final Color dotColor;
+}
+
+class _SensorLineChartPainter extends CustomPainter {
+  const _SensorLineChartPainter({
+    required this.values,
+    required this.lineColor,
+    required this.gridColor,
+  });
+
+  final List<double> values;
+  final Color lineColor;
+  final Color gridColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (values.isEmpty) {
+      return;
+    }
+
+    final minValue = values.reduce(math.min);
+    final maxValue = values.reduce(math.max);
+    final range = (maxValue - minValue).abs() < 0.0001 ? 1.0 : (maxValue - minValue);
+
+    final gridPaint = Paint()
+      ..color = gridColor
+      ..strokeWidth = 1;
+
+    const horizontalLines = 4;
+    for (int i = 0; i <= horizontalLines; i++) {
+      final y = size.height * i / horizontalLines;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+
+    final points = <Offset>[];
+    final stepX = values.length == 1 ? 0.0 : size.width / (values.length - 1);
+
+    for (int i = 0; i < values.length; i++) {
+      final normalizedY = (values[i] - minValue) / range;
+      points.add(
+        Offset(
+          stepX * i,
+          size.height - (normalizedY * size.height),
+        ),
+      );
+    }
+
+    final linePath = Path();
+    final fillPath = Path();
+
+    for (int i = 0; i < points.length; i++) {
+      final point = points[i];
+      if (i == 0) {
+        linePath.moveTo(point.dx, point.dy);
+        fillPath.moveTo(point.dx, size.height);
+        fillPath.lineTo(point.dx, point.dy);
+      } else {
+        linePath.lineTo(point.dx, point.dy);
+        fillPath.lineTo(point.dx, point.dy);
+      }
+    }
+
+    fillPath.lineTo(size.width, size.height);
+    fillPath.close();
+
+    final fillPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          lineColor.withOpacity(0.25),
+          lineColor.withOpacity(0.03),
+        ],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
+      ..style = PaintingStyle.fill;
+
+    final linePaint = Paint()
+      ..color = lineColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.6
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    canvas.drawPath(fillPath, fillPaint);
+    canvas.drawPath(linePath, linePaint);
+
+    final pointPaint = Paint()..color = lineColor;
+    for (final point in points) {
+      canvas.drawCircle(point, 2.6, pointPaint);
+    }
+
+    final latestPoint = points.last;
+    canvas.drawCircle(latestPoint, 5, pointPaint);
+    canvas.drawCircle(latestPoint, 2, Paint()..color = Colors.white);
+  }
+
+  @override
+  bool shouldRepaint(covariant _SensorLineChartPainter oldDelegate) {
+    return oldDelegate.values != values ||
+        oldDelegate.lineColor != lineColor ||
+        oldDelegate.gridColor != gridColor;
+  }
 }

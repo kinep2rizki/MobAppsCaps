@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:my_app/main.dart';
 import 'package:my_app/pages/HomePage.dart';
+import 'package:my_app/pages/ProfilePages/RiwayatData.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -85,5 +86,42 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('Riwayat chart uses metric keys from API response', (WidgetTester tester) async {
+    Future<List<dynamic>> fakeSensorSource() async {
+      return [
+        {
+          'temperature': 28.2,
+          'ph': 7.10,
+          'do': 6.7,
+          'ammonia': 0.18,
+        },
+        {
+          'temperature': 28.5,
+          'ph': 7.22,
+          'do': 6.9,
+          'ammonia': 0.20,
+        },
+      ];
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RiwayatDataPage(fetchSensorData: fakeSensorSource),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Parameter aktif:'), findsOneWidget);
+    expect(find.text('Suhu'), findsWidgets);
+
+    await tester.ensureVisible(find.text('Amonia').first);
+    await tester.tap(find.text('Amonia').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Parameter aktif: Amonia'), findsOneWidget);
+    expect(find.textContaining('Nilai terbaru:'), findsOneWidget);
   });
 }
