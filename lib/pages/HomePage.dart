@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:my_app/Services/AnalyticsService.dart';
 import 'package:my_app/pages/AnalyticsScreen.dart';
 import 'package:my_app/pages/ControlScreen.dart';
 import 'package:my_app/pages/ProfileScreen.dart';
@@ -16,8 +17,12 @@ class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
   late Future<Map<String, dynamic>> futureData;
   Map<String, dynamic>? _lastSensorData;
+  Map<String, dynamic>? _lastPredictionData;
   Timer? _pollingTimer;
+  Timer? _predictionPollingTimer;
   bool _isFetching = false;
+  bool _isFetchingPrediction = false;
+  bool _hasPredictionError = false;
 
   static const String _overrideBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
@@ -42,12 +47,15 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     futureData = _fetchInitialData();
+    _fetchInitialPredictionData();
     _startPolling();
+    _startPredictionPolling();
   }
 
   @override
   void dispose() {
     _pollingTimer?.cancel();
+    _predictionPollingTimer?.cancel();
     super.dispose();
   }
 
@@ -56,12 +64,18 @@ class _HomePageState extends State<HomePage> {
     try {
       final raw = await HomePageApi.getLatestSensorData(
         overrideBaseUrl: _overrideBaseUrl.isEmpty ? null : _overrideBaseUrl,
-        timeout: const Duration(seconds: 8),
+        timeout: const Duration(seconds: 10),
       );
 
       final latest = _getLatestSensorData(raw);
       if (latest != null) {
-        _lastSensorData = latest;
+        if (!mounted) {
+          _lastSensorData = latest;
+        } else {
+          setState(() {
+            _lastSensorData = latest;
+          });
+        }
       }
 
       return raw;
@@ -70,10 +84,52 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _fetchInitialPredictionData() async {
+    _isFetchingPrediction = true;
+    try {
+      final raw = await AnalyticsService.getLatestPrediction(
+        overrideBaseUrl: _overrideBaseUrl.isEmpty ? null : _overrideBaseUrl,
+        timeout: const Duration(seconds: 10),
+      );
+
+      final latest = _getLatestSensorData(raw);
+      if (latest == null) return;
+
+      if (!mounted) {
+        _lastPredictionData = latest;
+        _hasPredictionError = false;
+        return;
+      }
+
+      setState(() {
+        _lastPredictionData = latest;
+        _hasPredictionError = false;
+      });
+    } catch (_) {
+      if (!mounted) {
+        _hasPredictionError = true;
+        return;
+      }
+
+      setState(() {
+        _hasPredictionError = true;
+      });
+    } finally {
+      _isFetchingPrediction = false;
+    }
+  }
+
   void _startPolling() {
     _pollingTimer?.cancel();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       _refreshSilently();
+    });
+  }
+
+  void _startPredictionPolling() {
+    _predictionPollingTimer?.cancel();
+    _predictionPollingTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      _refreshPredictionSilently();
     });
   }
 
@@ -84,7 +140,7 @@ class _HomePageState extends State<HomePage> {
     try {
       final raw = await HomePageApi.getLatestSensorData(
         overrideBaseUrl: _overrideBaseUrl.isEmpty ? null : _overrideBaseUrl,
-        timeout: const Duration(seconds: 8),
+        timeout: const Duration(seconds: 10),
       );
 
       final latest = _getLatestSensorData(raw);
@@ -99,12 +155,44 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void refreshData() {
-    if (!mounted || _isFetching) return;
+  Future<void> _refreshPredictionSilently() async {
+    if (!mounted || _isFetchingPrediction) return;
 
-    setState(() {
-      futureData = _fetchInitialData();
-    });
+    _isFetchingPrediction = true;
+    try {
+      final raw = await AnalyticsService.getLatestPrediction(
+        overrideBaseUrl: _overrideBaseUrl.isEmpty ? null : _overrideBaseUrl,
+        timeout: const Duration(seconds: 10),
+      );
+
+      final latest = _getLatestSensorData(raw);
+      if (!mounted || latest == null) return;
+
+      setState(() {
+        _lastPredictionData = latest;
+        _hasPredictionError = false;
+      });
+    } catch (_) {
+      if (!mounted || _lastPredictionData != null) return;
+
+      setState(() {
+        _hasPredictionError = true;
+      });
+    } finally {
+      _isFetchingPrediction = false;
+    }
+  }
+
+  void refreshData() {
+    if (mounted && !_isFetching) {
+      setState(() {
+        futureData = _fetchInitialData();
+      });
+    }
+
+    if (!_isFetchingPrediction) {
+      _refreshPredictionSilently();
+    }
   }
 
   void _onItemTapped(int index) {
@@ -122,7 +210,12 @@ class _HomePageState extends State<HomePage> {
         children: [
           _buildDashboardView(),
           const ControlScreen(),
-          const AnalyticsScreen(),
+          AnalyticsScreen(
+            predictionData: _lastPredictionData,
+            isLoading: _isFetchingPrediction && _lastPredictionData == null,
+            hasError: _hasPredictionError && _lastPredictionData == null,
+            onRetry: refreshData,
+          ),
           const ProfileScreen(),
         ],
       ),
@@ -156,11 +249,13 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildStatusKolamCard(Map<String, dynamic>? sensorData, {bool isLoading = false}) {
+  Widget _buildStatusKolamCard(Map<String, dynamic>? sensorData,
+      {bool isLoading = false}) {
     final loading = isLoading && sensorData == null;
     final status = loading ? 'Memuat...' : _pondStatusFromSensor(sensorData);
     final statusColor = loading ? _muted : _pondStatusTextColor(status);
-    final statusBackground = loading ? Colors.grey.shade200 : _pondStatusBackground(status);
+    final statusBackground =
+        loading ? Colors.grey.shade200 : _pondStatusBackground(status);
 
     final hariBudidaya = sensorData == null
         ? null
@@ -203,7 +298,8 @@ class _HomePageState extends State<HomePage> {
               ),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: statusBackground,
                   borderRadius: BorderRadius.circular(16),
@@ -225,7 +321,8 @@ class _HomePageState extends State<HomePage> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Hari Budidaya', style: TextStyle(color: Colors.white)),
+                  const Text('Hari Budidaya',
+                      style: TextStyle(color: Colors.white)),
                   if (loading)
                     const SizedBox(
                       width: 22,
@@ -249,7 +346,8 @@ class _HomePageState extends State<HomePage> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  const Text('Est. Panen', style: TextStyle(color: Colors.white)),
+                  const Text('Est. Panen',
+                      style: TextStyle(color: Colors.white)),
                   if (loading)
                     const SizedBox(
                       width: 22,
@@ -347,7 +445,8 @@ class _HomePageState extends State<HomePage> {
 
         if (entry.value is Map) {
           final mapValue = entry.value as Map;
-          final nestedValue = mapValue['value'] ?? mapValue['nilai'] ?? mapValue['val'];
+          final nestedValue =
+              mapValue['value'] ?? mapValue['nilai'] ?? mapValue['val'];
           final parsedNested = _toDouble(nestedValue);
           if (parsedNested != null) return parsedNested;
         }
@@ -372,7 +471,8 @@ class _HomePageState extends State<HomePage> {
       return 'Tidak ada data';
     }
 
-    final ammonia = _extractNumericValue(sensorData, ['ammonia', 'amonia', 'nh3']);
+    final ammonia =
+        _extractNumericValue(sensorData, ['ammonia', 'amonia', 'nh3']);
     final ph = _extractNumericValue(sensorData, ['ph', 'ph_level']);
     final doLevel = _extractNumericValue(sensorData, [
       'do',
@@ -389,7 +489,8 @@ class _HomePageState extends State<HomePage> {
       'water_temperature',
     ]);
 
-    final hasAnyData = [ammonia, ph, doLevel, suhu].any((value) => value != null);
+    final hasAnyData =
+        [ammonia, ph, doLevel, suhu].any((value) => value != null);
     if (!hasAnyData) {
       return 'Tidak ada data';
     }
@@ -454,7 +555,8 @@ class _HomePageState extends State<HomePage> {
     return '${value.toStringAsFixed(precision)}$unit';
   }
 
-  String _statusInRange(double? value, {required double min, required double max}) {
+  String _statusInRange(double? value,
+      {required double min, required double max}) {
     if (value == null) {
       return 'No Data';
     }
@@ -490,7 +592,8 @@ class _HomePageState extends State<HomePage> {
     return _warning;
   }
 
-  Widget _buildSensorGrid(Map<String, dynamic>? sensorData, {bool isLoading = false}) {
+  Widget _buildSensorGrid(Map<String, dynamic>? sensorData,
+      {bool isLoading = false}) {
     final loading = isLoading && sensorData == null;
 
     final suhuAir = sensorData == null
@@ -612,7 +715,9 @@ class _HomePageState extends State<HomePage> {
               ),
             )
           else
-            Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            Text(value,
+                style:
+                    const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
           const SizedBox(height: 2),
           Row(
             children: [
@@ -636,7 +741,8 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildAmmoniaWarningCard(Map<String, dynamic>? sensorData, {bool isLoading = false}) {
+  Widget _buildAmmoniaWarningCard(Map<String, dynamic>? sensorData,
+      {bool isLoading = false}) {
     final loading = isLoading && sensorData == null;
 
     if (loading) {
@@ -673,7 +779,8 @@ class _HomePageState extends State<HomePage> {
         : _extractNumericValue(sensorData, ['ammonia', 'amonia', 'nh3']);
 
     final isSafe = ammoniaLevel != null && ammoniaLevel <= 0.2;
-    final ammoniaText = ammoniaLevel == null ? '-' : ammoniaLevel.toStringAsFixed(2);
+    final ammoniaText =
+        ammoniaLevel == null ? '-' : ammoniaLevel.toStringAsFixed(2);
 
     final titleColor = ammoniaLevel == null
         ? _muted
@@ -768,83 +875,19 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildAksiCepatGrid() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: _buildAksiCard(
-            'Atur Pakan',
-            'Kontrol pemberian pakan',
-            Icons.schedule,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildAksiCard(
-            'Lihat Prediksi',
-            'Analisa machine learning',
-            Icons.trending_up,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAksiCard(String title, String subtitle, IconData icon) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 110),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: _surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: _muted.withOpacity(0.15),
-            spreadRadius: 1,
-            blurRadius: 5,
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: _primary, size: 24),
-          const SizedBox(height: 10),
-          Text(
-            title,
-            style: const TextStyle(
-              color: _textPrimary,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            subtitle,
-            style: const TextStyle(color: _textSecondary, fontSize: 11),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildDashboardView() {
     return SafeArea(
       child: FutureBuilder<Map<String, dynamic>>(
         future: futureData,
         builder: (context, snapshot) {
-          final initialData = snapshot.hasData
-              ? _getLatestSensorData(snapshot.data!)
-              : null;
+          final initialData =
+              snapshot.hasData ? _getLatestSensorData(snapshot.data!) : null;
 
           final sensorData = _lastSensorData ?? initialData;
 
           final isInitialLoading =
               snapshot.connectionState == ConnectionState.waiting &&
-              sensorData == null;
+                  sensorData == null;
 
           final hasInitialError = snapshot.hasError && sensorData == null;
 
@@ -881,21 +924,11 @@ class _HomePageState extends State<HomePage> {
               if (hasInitialError)
                 _buildDataErrorCard()
               else ...[
-                _buildAmmoniaWarningCard(sensorData, isLoading: isInitialLoading),
+                _buildAmmoniaWarningCard(sensorData,
+                    isLoading: isInitialLoading),
                 const SizedBox(height: 16),
                 _buildSensorGrid(sensorData, isLoading: isInitialLoading),
               ],
-              const SizedBox(height: 24),
-              const Text(
-                'Aksi Cepat',
-                style: TextStyle(
-                  color: _textPrimary,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
-              _buildAksiCepatGrid(),
             ],
           );
         },
