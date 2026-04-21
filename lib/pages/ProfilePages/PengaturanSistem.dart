@@ -18,7 +18,6 @@ class _PengaturanSistemPageState extends State<PengaturanSistemPage> {
   static const Color _textSecondary = Color(0xFF6B7280);
   static const Color _icon = Color(0xFF4B5563);
   static const Color _primary = Color(0xFF22C55E);
-  static const Color _accent = Color(0xFF2563EB);
   static const Color _muted = Color(0xFF9CA3AF);
 
   late SharedPreferences _prefs;

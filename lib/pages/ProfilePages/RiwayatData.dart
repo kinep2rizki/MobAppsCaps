@@ -3,6 +3,12 @@ import 'package:my_app/Services/api_service.dart';
 import 'dart:math' as math;
 import 'dart:ui';
 
+enum _AggregationMode {
+  hourly,
+  daily,
+  weekly,
+}
+
 class RiwayatDataPage extends StatefulWidget {
   const RiwayatDataPage({
     super.key,
@@ -34,6 +40,7 @@ class _RiwayatDataPageState extends State<RiwayatDataPage> {
   bool _isChartLoading = true;
   String? _chartError;
   Map<String, List<double>> _metricSeries = {};
+  Map<String, List<DateTime?>> _metricSeriesTimes = {};
   String? _selectedMetricKey;
   DateTime? _lastUpdatedAt;
   final List<String> _kolamOptions = [
@@ -77,7 +84,7 @@ class _RiwayatDataPageState extends State<RiwayatDataPage> {
               _buildHeader(context),
               const SizedBox(height: 20),
               const Text(
-                'Riwayat Alert',
+                'Periode Data',
                 style: TextStyle(
                   color: _textPrimary,
                   fontSize: 14,
@@ -88,7 +95,7 @@ class _RiwayatDataPageState extends State<RiwayatDataPage> {
               _buildPeriodChips(),
               const SizedBox(height: 18),
               const Text(
-                'Riwayat Alert',
+                'Pilih Kolam',
                 style: TextStyle(
                   color: _textPrimary,
                   fontSize: 14,
@@ -245,15 +252,16 @@ class _RiwayatDataPageState extends State<RiwayatDataPage> {
 
     try {
       final response = await widget.fetchSensorData();
-      final parsedSeries = _buildMetricSeries(response);
-      final sortedKeys = parsedSeries.keys.toList()..sort();
+      final parsedBundle = _buildMetricSeries(response);
+      final sortedKeys = parsedBundle.valuesByMetric.keys.toList()..sort();
 
       if (!mounted) {
         return;
       }
 
       setState(() {
-        _metricSeries = parsedSeries;
+        _metricSeries = parsedBundle.valuesByMetric;
+        _metricSeriesTimes = parsedBundle.timestampsByMetric;
         _lastUpdatedAt = DateTime.now();
         _isChartLoading = false;
 
@@ -296,7 +304,81 @@ class _RiwayatDataPageState extends State<RiwayatDataPage> {
     }
 
     final nestedData = _asStringKeyedMap(entryMap['data']);
-    return nestedData ?? entryMap;
+    if (nestedData == null) {
+      return entryMap;
+    }
+
+    // Keep root metadata (e.g. timestamp) while preferring nested payload values.
+    return {
+      ...entryMap,
+      ...nestedData,
+    };
+  }
+
+  DateTime? _parseTimestamp(dynamic rawValue) {
+    if (rawValue == null) {
+      return null;
+    }
+
+    if (rawValue is DateTime) {
+      return rawValue.toLocal();
+    }
+
+    if (rawValue is num) {
+      final asInt = rawValue.toInt();
+      if (asInt <= 0) {
+        return null;
+      }
+
+      final milliseconds = asInt > 1000000000000 ? asInt : asInt * 1000;
+      return DateTime.fromMillisecondsSinceEpoch(
+        milliseconds,
+        isUtc: true,
+      ).toLocal();
+    }
+
+    if (rawValue is String) {
+      final parsed = DateTime.tryParse(rawValue);
+      if (parsed != null) {
+        return parsed.toLocal();
+      }
+
+      final epochSecondsOrMilliseconds = int.tryParse(rawValue);
+      if (epochSecondsOrMilliseconds != null &&
+          epochSecondsOrMilliseconds > 0) {
+        final milliseconds = epochSecondsOrMilliseconds > 1000000000000
+            ? epochSecondsOrMilliseconds
+            : epochSecondsOrMilliseconds * 1000;
+        return DateTime.fromMillisecondsSinceEpoch(
+          milliseconds,
+          isUtc: true,
+        ).toLocal();
+      }
+    }
+
+    return null;
+  }
+
+  DateTime? _extractTimestampFromRow(Map<String, dynamic> row) {
+    const timestampKeys = [
+      'timestamp',
+      'created_at',
+      'updated_at',
+      'date_time',
+      'datetime',
+      'recorded_at',
+      'time',
+      'date',
+    ];
+
+    for (final key in timestampKeys) {
+      final parsed = _parseTimestamp(row[key]);
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+
+    return null;
   }
 
   bool _rowMatchesSelectedKolam(Map<String, dynamic> row) {
@@ -335,14 +417,17 @@ class _RiwayatDataPageState extends State<RiwayatDataPage> {
     return null;
   }
 
-  Map<String, List<double>> _buildMetricSeries(List<dynamic> response) {
+  _MetricSeriesBundle _buildMetricSeries(List<dynamic> response) {
     final series = <String, List<double>>{};
+    final timestampsByMetric = <String, List<DateTime?>>{};
 
     for (final entry in response) {
       final row = _extractRowData(entry);
       if (row == null || !_rowMatchesSelectedKolam(row)) {
         continue;
       }
+
+      final timestamp = _extractTimestampFromRow(row);
 
       for (final item in row.entries) {
         final key = item.key.toLowerCase();
@@ -356,36 +441,287 @@ class _RiwayatDataPageState extends State<RiwayatDataPage> {
         }
 
         series.putIfAbsent(key, () => []).add(parsedValue);
+        timestampsByMetric.putIfAbsent(key, () => []).add(timestamp);
       }
     }
 
-    return series;
+    return _MetricSeriesBundle(
+      valuesByMetric: series,
+      timestampsByMetric: timestampsByMetric,
+    );
   }
 
-  int _chartPointCount() {
+  int _chartWindowDays() {
     switch (_selectedPeriod) {
       case 0:
         return 7;
       case 1:
-        return 14;
-      default:
         return 30;
+      default:
+        return 90;
     }
   }
 
-  List<double> _currentSeriesValues() {
+  int _fallbackPointsPerDay() {
+    // Digunakan saat timestamp tidak tersedia; tampilkan cakupan harian yang cukup.
+    return 24;
+  }
+
+  _AggregationMode _aggregationMode() {
+    switch (_selectedPeriod) {
+      case 0:
+        return _AggregationMode.hourly;
+      case 1:
+        return _AggregationMode.daily;
+      default:
+        return _AggregationMode.weekly;
+    }
+  }
+
+  String _aggregationUnitLabel() {
+    switch (_aggregationMode()) {
+      case _AggregationMode.hourly:
+        return 'jam';
+      case _AggregationMode.daily:
+        return 'hari';
+      case _AggregationMode.weekly:
+        return 'minggu';
+    }
+  }
+
+  DateTime _bucketStartForAggregation(DateTime value) {
+    final local = value.toLocal();
+    switch (_aggregationMode()) {
+      case _AggregationMode.hourly:
+        return DateTime(local.year, local.month, local.day, local.hour);
+      case _AggregationMode.daily:
+        return DateTime(local.year, local.month, local.day);
+      case _AggregationMode.weekly:
+        final dayStart = DateTime(local.year, local.month, local.day);
+        return dayStart.subtract(Duration(days: dayStart.weekday - 1));
+    }
+  }
+
+  DateTime _bucketLabelTime(DateTime bucketStart) {
+    switch (_aggregationMode()) {
+      case _AggregationMode.hourly:
+        return bucketStart.add(const Duration(minutes: 30));
+      case _AggregationMode.daily:
+        return bucketStart.add(const Duration(hours: 12));
+      case _AggregationMode.weekly:
+        return bucketStart.add(const Duration(days: 3, hours: 12));
+    }
+  }
+
+  List<_ChartDataPoint> _currentAggregatedPoints() {
+    final rawPoints = _currentRawPoints();
+    if (rawPoints.isEmpty) {
+      return const [];
+    }
+
+    final pointsWithTimestamp = rawPoints
+        .where((point) => point.timestamp != null)
+        .map(
+          (point) => _ChartDataPoint(
+            value: point.value,
+            timestamp: point.timestamp!.toLocal(),
+          ),
+        )
+        .toList();
+
+    if (pointsWithTimestamp.isEmpty) {
+      return rawPoints;
+    }
+
+    pointsWithTimestamp.sort(
+      (a, b) => a.timestamp!.compareTo(b.timestamp!),
+    );
+
+    final buckets = <DateTime, _AggregationBucket>{};
+
+    for (final point in pointsWithTimestamp) {
+      final ts = point.timestamp!;
+      final bucketStart = _bucketStartForAggregation(ts);
+      final bucket = buckets.putIfAbsent(
+        bucketStart,
+        () => _AggregationBucket(),
+      );
+      bucket.add(point.value);
+    }
+
+    if (buckets.isEmpty) {
+      return pointsWithTimestamp;
+    }
+
+    final sortedBucketStarts = buckets.keys.toList()..sort();
+
+    return sortedBucketStarts.map((bucketStart) {
+      final bucket = buckets[bucketStart]!;
+      return _ChartDataPoint(
+        value: bucket.average,
+        timestamp: _bucketLabelTime(bucketStart),
+        minValue: bucket.min,
+        maxValue: bucket.max,
+      );
+    }).toList();
+  }
+
+  List<_ChartDataPoint> _selectedMetricRawPoints() {
     final key = _selectedMetricKey;
     if (key == null) {
       return const [];
     }
 
     final values = _metricSeries[key] ?? const [];
-    final pointCount = _chartPointCount();
-    if (values.length <= pointCount) {
-      return values;
+    if (values.isEmpty) {
+      return const [];
     }
 
-    return values.sublist(values.length - pointCount);
+    final times = _metricSeriesTimes[key] ?? const [];
+    final points = <_ChartDataPoint>[];
+
+    for (int i = 0; i < values.length; i++) {
+      points.add(
+        _ChartDataPoint(
+          value: values[i],
+          timestamp: i < times.length ? times[i] : null,
+        ),
+      );
+    }
+
+    return points;
+  }
+
+  List<_ChartDataPoint> _currentRawPoints() {
+    final points = _selectedMetricRawPoints();
+    if (points.isEmpty) {
+      return const [];
+    }
+
+    final fallbackPointCount = _chartWindowDays() * _fallbackPointsPerDay();
+    final pointsWithTimestamp = points
+        .where((point) => point.timestamp != null)
+        .map(
+          (point) => _ChartDataPoint(
+            value: point.value,
+            timestamp: point.timestamp!.toLocal(),
+          ),
+        )
+        .toList();
+
+    if (pointsWithTimestamp.isEmpty) {
+      if (points.length <= fallbackPointCount) {
+        return points;
+      }
+
+      return points.sublist(points.length - fallbackPointCount);
+    }
+
+    pointsWithTimestamp.sort(
+      (a, b) => a.timestamp!.compareTo(b.timestamp!),
+    );
+
+    final latestTimestamp = pointsWithTimestamp.last.timestamp!;
+    final latestDayStart = DateTime(
+      latestTimestamp.year,
+      latestTimestamp.month,
+      latestTimestamp.day,
+    );
+    final windowStart = latestDayStart.subtract(
+      Duration(days: _chartWindowDays() - 1),
+    );
+    final windowEnd = latestDayStart.add(const Duration(days: 1));
+
+    final filtered = pointsWithTimestamp
+        .where(
+          (point) =>
+              !point.timestamp!.isBefore(windowStart) &&
+              point.timestamp!.isBefore(windowEnd),
+        )
+        .toList();
+
+    if (filtered.isNotEmpty) {
+      return filtered;
+    }
+
+    if (pointsWithTimestamp.length <= fallbackPointCount) {
+      return pointsWithTimestamp;
+    }
+
+    return pointsWithTimestamp.sublist(
+      pointsWithTimestamp.length - fallbackPointCount,
+    );
+  }
+
+  List<double> _metricWindowValues(String key) {
+    final values = _metricSeries[key] ?? const [];
+    if (values.isEmpty) {
+      return const [];
+    }
+
+    final times = _metricSeriesTimes[key] ?? const [];
+    final points = <_ChartDataPoint>[];
+
+    for (int i = 0; i < values.length; i++) {
+      points.add(
+        _ChartDataPoint(
+          value: values[i],
+          timestamp: i < times.length ? times[i] : null,
+        ),
+      );
+    }
+
+    final fallbackPointCount = _chartWindowDays() * _fallbackPointsPerDay();
+    final pointsWithTimestamp = points
+        .where((point) => point.timestamp != null)
+        .map(
+          (point) => _ChartDataPoint(
+            value: point.value,
+            timestamp: point.timestamp!.toLocal(),
+          ),
+        )
+        .toList();
+
+    if (pointsWithTimestamp.isEmpty) {
+      final fallback = points.length <= fallbackPointCount
+          ? points
+          : points.sublist(points.length - fallbackPointCount);
+      return fallback.map((point) => point.value).toList(growable: false);
+    }
+
+    pointsWithTimestamp.sort(
+      (a, b) => a.timestamp!.compareTo(b.timestamp!),
+    );
+
+    final latestTimestamp = pointsWithTimestamp.last.timestamp!;
+    final latestDayStart = DateTime(
+      latestTimestamp.year,
+      latestTimestamp.month,
+      latestTimestamp.day,
+    );
+    final windowStart = latestDayStart.subtract(
+      Duration(days: _chartWindowDays() - 1),
+    );
+    final windowEnd = latestDayStart.add(const Duration(days: 1));
+
+    final filtered = pointsWithTimestamp
+        .where(
+          (point) =>
+              !point.timestamp!.isBefore(windowStart) &&
+              point.timestamp!.isBefore(windowEnd),
+        )
+        .toList();
+
+    if (filtered.isNotEmpty) {
+      return filtered.map((point) => point.value).toList(growable: false);
+    }
+
+    final fallback = pointsWithTimestamp.length <= fallbackPointCount
+        ? pointsWithTimestamp
+        : pointsWithTimestamp.sublist(
+            pointsWithTimestamp.length - fallbackPointCount,
+          );
+    return fallback.map((point) => point.value).toList(growable: false);
   }
 
   String _formatChartTime() {
@@ -475,6 +811,287 @@ class _RiwayatDataPageState extends State<RiwayatDataPage> {
     return '$valueText $unit';
   }
 
+  double _averageValue(List<double> values) {
+    if (values.isEmpty) {
+      return 0;
+    }
+
+    final total = values.fold<double>(0, (sum, value) => sum + value);
+    return total / values.length;
+  }
+
+  double _trendDelta(List<double> values) {
+    if (values.length < 2) {
+      return 0;
+    }
+
+    return values.last - values.first;
+  }
+
+  String _trendText(List<double> values, String key) {
+    if (values.length < 2) {
+      return 'Belum cukup data';
+    }
+
+    final delta = _trendDelta(values);
+    if (delta.abs() < 0.0001) {
+      return 'Stabil';
+    }
+
+    final deltaValue = _formatMetricValue(delta.abs(), key);
+    return delta > 0 ? 'Naik $deltaValue' : 'Turun $deltaValue';
+  }
+
+  Color _trendColor(List<double> values) {
+    if (values.length < 2) {
+      return _muted;
+    }
+
+    final delta = _trendDelta(values);
+    if (delta.abs() < 0.0001) {
+      return _muted;
+    }
+
+    return delta > 0 ? _success : _danger;
+  }
+
+  String _formatAxisTick(double value, String key) {
+    final text = value.toStringAsFixed(_metricPrecision(key));
+    final unit = _metricUnit(key);
+    if (unit.isEmpty) {
+      return text;
+    }
+
+    return '$text $unit';
+  }
+
+  Widget _buildInsightCard({
+    required String label,
+    required String value,
+    required Color accent,
+    required IconData icon,
+  }) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: _surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 14, color: accent),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      color: _textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: accent,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildYAxisLabels({
+    required double minValue,
+    required double maxValue,
+    required String metricKey,
+  }) {
+    final midValue = (minValue + maxValue) / 2;
+    final ticks = [maxValue, midValue, minValue];
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: ticks
+          .map(
+            (value) => Text(
+              _formatAxisTick(value, metricKey),
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                color: _textSecondary,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  Widget _buildChartLegendItem({
+    required Color color,
+    required String label,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 18,
+          height: 3,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(
+            color: _textSecondary,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _monthShort(int month) {
+    const monthNames = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'Mei',
+      'Jun',
+      'Jul',
+      'Agu',
+      'Sep',
+      'Okt',
+      'Nov',
+      'Des',
+    ];
+
+    return monthNames[month - 1];
+  }
+
+  String _formatDateTimeLabel(DateTime? value) {
+    if (value == null) {
+      return '-';
+    }
+
+    final local = value.toLocal();
+    final day = local.day.toString().padLeft(2, '0');
+    final month = _monthShort(local.month);
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '$day $month $hour:$minute';
+  }
+
+  String _formatXAxisDateTime(DateTime? value) {
+    if (value == null) {
+      return '-';
+    }
+
+    final local = value.toLocal();
+    final day = local.day.toString().padLeft(2, '0');
+    final month = _monthShort(local.month);
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '$day $month\n$hour:$minute';
+  }
+
+  int _xAxisLabelCount() {
+    switch (_selectedPeriod) {
+      case 0:
+        return 7;
+      case 1:
+        return 6;
+      default:
+        return 6;
+    }
+  }
+
+  List<int> _buildXAxisIndices(int dataLength) {
+    if (dataLength <= 1) {
+      return const [0];
+    }
+
+    final desiredLabels = math.min(_xAxisLabelCount(), dataLength);
+    final indices = <int>{0, dataLength - 1};
+
+    if (desiredLabels > 2) {
+      final step = (dataLength - 1) / (desiredLabels - 1);
+      for (int i = 1; i < desiredLabels - 1; i++) {
+        indices.add((step * i).round());
+      }
+    }
+
+    final sorted = indices.toList()..sort();
+    return sorted;
+  }
+
+  List<String> _xAxisLabels(List<_ChartDataPoint> points) {
+    if (points.isEmpty) {
+      return const ['-'];
+    }
+
+    final indices = _buildXAxisIndices(points.length);
+
+    return indices
+        .map(
+          (index) => points[index].timestamp == null
+              ? '-'
+              : _formatXAxisDateTime(points[index].timestamp),
+        )
+        .toList();
+  }
+
+  Widget _buildXAxisLabels(List<_ChartDataPoint> points) {
+    final labels = _xAxisLabels(points);
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: labels.asMap().entries.map((entry) {
+        final index = entry.key;
+        final label = entry.value;
+        final isFirst = index == 0;
+        final isLast = index == labels.length - 1;
+
+        return Expanded(
+          child: Text(
+            label,
+            textAlign: isFirst
+                ? TextAlign.left
+                : isLast
+                    ? TextAlign.right
+                    : TextAlign.center,
+            style: const TextStyle(
+              color: _textSecondary,
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+              height: 1.2,
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
   Color _metricColor(String key) {
     switch (key) {
       case 'temperature':
@@ -501,6 +1118,81 @@ class _RiwayatDataPageState extends State<RiwayatDataPage> {
       default:
         return _primary;
     }
+  }
+
+  int _metricPriority(String key) {
+    switch (key) {
+      case 'temperature':
+      case 'temp':
+      case 'suhu':
+      case 'suhu_air':
+      case 'water_temperature':
+        return 0;
+      case 'ph':
+      case 'ph_level':
+        return 1;
+      case 'do':
+      case 'dissolved_oxygen':
+      case 'oxygen':
+        return 2;
+      case 'turbidity':
+      case 'kekeruhan':
+      case 'ntu':
+        return 3;
+      case 'ammonia':
+      case 'amonia':
+      case 'nh3':
+        return 4;
+      default:
+        return 99;
+    }
+  }
+
+  List<_RingkasanMetricItem> _buildRingkasanMetricItems() {
+    final keys = _metricSeries.keys.toList()
+      ..sort((a, b) {
+        final priorityCompare =
+            _metricPriority(a).compareTo(_metricPriority(b));
+        if (priorityCompare != 0) {
+          return priorityCompare;
+        }
+
+        return _metricDisplayName(a).compareTo(_metricDisplayName(b));
+      });
+
+    final items = <_RingkasanMetricItem>[];
+
+    for (final key in keys) {
+      final metricValues = _metricWindowValues(key);
+      if (metricValues.isEmpty) {
+        continue;
+      }
+
+      final average = _averageValue(metricValues);
+      final delta = _trendDelta(metricValues);
+      final trendUp =
+          metricValues.length < 2 || delta.abs() < 0.0001 ? null : delta > 0;
+      final trendText = metricValues.length < 2
+          ? 'Min. data'
+          : delta.abs() < 0.0001
+              ? 'Stabil'
+              : _formatMetricValue(delta.abs(), key);
+
+      items.add(
+        _RingkasanMetricItem(
+          label: 'Rata-rata ${_metricDisplayName(key)}',
+          value: _formatMetricValue(average, key),
+          trend: trendText,
+          trendUp: trendUp,
+        ),
+      );
+
+      if (items.length >= 4) {
+        break;
+      }
+    }
+
+    return items;
   }
 
   Widget _buildMetricSelector() {
@@ -539,45 +1231,69 @@ class _RiwayatDataPageState extends State<RiwayatDataPage> {
   }
 
   Widget _buildRingkasanGrid() {
-    return Column(
-      children: [
+    final items = _buildRingkasanMetricItems();
+
+    if (_isChartLoading && items.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 18),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (items.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: _surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _border),
+        ),
+        child: const Text(
+          'Ringkasan belum tersedia karena data sensor pada periode ini kosong.',
+          style: TextStyle(
+            color: _textSecondary,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }
+
+    final rows = <Widget>[];
+    for (int i = 0; i < items.length; i += 2) {
+      final left = items[i];
+      final right = i + 1 < items.length ? items[i + 1] : null;
+
+      rows.add(
         Row(
           children: [
             _buildStatCard(
-              label: 'Rata-rata Suhu',
-              value: '28.3 C',
-              trend: '2.1',
-              trendUp: true,
+              label: left.label,
+              value: left.value,
+              trend: left.trend,
+              trendUp: left.trendUp,
             ),
             const SizedBox(width: 12),
-            _buildStatCard(
-              label: 'Rata-rata pH',
-              value: '7.1',
-              trend: '0.5',
-              trendUp: false,
-            ),
+            if (right != null)
+              _buildStatCard(
+                label: right.label,
+                value: right.value,
+                trend: right.trend,
+                trendUp: right.trendUp,
+              )
+            else
+              const Expanded(child: SizedBox.shrink()),
           ],
         ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            _buildStatCard(
-              label: 'Konsumsi Pakan',
-              value: '42.3 Kg',
-              trend: '2.7',
-              trendUp: true,
-            ),
-            const SizedBox(width: 12),
-            _buildStatCard(
-              label: 'Feeding Rate',
-              value: '2.8%',
-              trend: 'Stabil',
-              trendUp: null,
-            ),
-          ],
-        ),
-      ],
-    );
+      );
+
+      if (i + 2 < items.length) {
+        rows.add(const SizedBox(height: 12));
+      }
+    }
+
+    return Column(children: rows);
   }
 
   Widget _buildStatCard({
@@ -659,9 +1375,50 @@ class _RiwayatDataPageState extends State<RiwayatDataPage> {
 
   Widget _buildGrafikCard() {
     final selectedKey = _selectedMetricKey;
-    final chartValues = _currentSeriesValues();
+    final metricKey = selectedKey ?? '';
+    final rawPoints = _currentRawPoints();
+    final rawValues =
+        rawPoints.map((point) => point.value).toList(growable: false);
+    final chartPoints = _currentAggregatedPoints();
+    final chartValues =
+        chartPoints.map((point) => point.value).toList(growable: false);
+    final chartMinValues = chartPoints
+        .map((point) => point.minValue ?? point.value)
+        .toList(growable: false);
+    final chartMaxValues = chartPoints
+        .map((point) => point.maxValue ?? point.value)
+        .toList(growable: false);
     final hasData = selectedKey != null && chartValues.isNotEmpty;
-    final activeColor = selectedKey == null ? _primary : _metricColor(selectedKey);
+    final activeColor =
+        selectedKey == null ? _primary : _metricColor(selectedKey);
+
+    final rangeSourceValues = hasData
+        ? <double>[...chartMinValues, ...chartMaxValues]
+        : const <double>[];
+
+    final minValue = hasData ? rangeSourceValues.reduce(math.min) : 0.0;
+    final maxValue = hasData ? rangeSourceValues.reduce(math.max) : 0.0;
+    final averageSourceValues = hasData
+        ? (rawValues.isNotEmpty ? rawValues : chartValues)
+        : const <double>[];
+    final averageValue = hasData ? _averageValue(averageSourceValues) : 0.0;
+    final latestValue = hasData
+        ? (rawValues.isNotEmpty ? rawValues.last : chartValues.last)
+        : 0.0;
+    final latestDataTime = hasData
+        ? (rawPoints.isNotEmpty
+            ? rawPoints.last.timestamp
+            : chartPoints.last.timestamp)
+        : null;
+    final oldestDataTime = hasData
+        ? (rawPoints.isNotEmpty
+            ? rawPoints.first.timestamp
+            : chartPoints.first.timestamp)
+        : null;
+
+    final trendSource = hasData ? chartValues : const <double>[];
+    final trendText = hasData ? _trendText(trendSource, metricKey) : '-';
+    final trendColor = hasData ? _trendColor(trendSource) : _muted;
 
     return Container(
       width: double.infinity,
@@ -686,7 +1443,7 @@ class _RiwayatDataPageState extends State<RiwayatDataPage> {
               ),
               const SizedBox(width: 10),
               const Text(
-                'Grafik Tren Parameter',
+                'Grafik Aggregasi Parameter',
                 style: TextStyle(
                   color: _textPrimary,
                   fontSize: 15,
@@ -698,6 +1455,29 @@ class _RiwayatDataPageState extends State<RiwayatDataPage> {
                 onPressed: () => _refreshChartData(showLoading: false),
                 tooltip: 'Refresh data sensor',
                 icon: const Icon(Icons.refresh, color: _textSecondary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Data diringkas dengan rata-rata per ${_aggregationUnitLabel()} agar grafik lebih renggang dan mudah dibaca.',
+            style: const TextStyle(
+              color: _textSecondary,
+              fontSize: 12,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _buildChartLegendItem(
+                color: activeColor,
+                label: 'Rata-rata agregasi',
+              ),
+              const SizedBox(width: 12),
+              _buildChartLegendItem(
+                color: activeColor.withOpacity(0.28),
+                label: 'Rentang min-maks',
               ),
             ],
           ),
@@ -720,7 +1500,8 @@ class _RiwayatDataPageState extends State<RiwayatDataPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _chartError ?? 'Belum ada data sensor yang bisa divisualisasikan.',
+                    _chartError ??
+                        'Belum ada data sensor yang bisa divisualisasikan.',
                     style: const TextStyle(
                       color: _textPrimary,
                       fontSize: 13,
@@ -763,80 +1544,127 @@ class _RiwayatDataPageState extends State<RiwayatDataPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Parameter aktif: ${_metricDisplayName(selectedKey)}',
+                    'Parameter aktif: ${_metricDisplayName(metricKey)}',
                     style: TextStyle(
                       color: activeColor,
-                      fontSize: 13,
+                      fontSize: 14,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    'Update terakhir: ${_formatChartTime()}',
+                    'Data terbaru: ${_formatDateTimeLabel(latestDataTime)} • Rentang ${_periods[_selectedPeriod].toLowerCase()}',
                     style: const TextStyle(
                       color: _textSecondary,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  if (latestDataTime == null)
+                    Text(
+                      'Update aplikasi: ${_formatChartTime()}',
+                      style: const TextStyle(
+                        color: _muted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                 ],
               ),
             ),
             const SizedBox(height: 12),
+            Row(
+              children: [
+                _buildInsightCard(
+                  label: 'Nilai terbaru',
+                  value: _formatMetricValue(latestValue, metricKey),
+                  accent: activeColor,
+                  icon: Icons.new_releases_outlined,
+                ),
+                const SizedBox(width: 10),
+                _buildInsightCard(
+                  label: 'Rata-rata',
+                  value: _formatMetricValue(averageValue, metricKey),
+                  accent: _primary,
+                  icon: Icons.functions,
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                _buildInsightCard(
+                  label: 'Rentang nilai agregasi',
+                  value:
+                      '${_formatMetricValue(minValue, metricKey)} - ${_formatMetricValue(maxValue, metricKey)}',
+                  accent: _textSecondary,
+                  icon: Icons.straighten,
+                ),
+                const SizedBox(width: 10),
+                _buildInsightCard(
+                  label: 'Perubahan agregasi',
+                  value: trendText,
+                  accent: trendColor,
+                  icon: Icons.show_chart,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
             Container(
-              height: 190,
+              height: 220,
               width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+              padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
               decoration: BoxDecoration(
                 color: _surface,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: _border),
               ),
-              child: CustomPaint(
-                painter: _SensorLineChartPainter(
-                  values: chartValues,
-                  lineColor: activeColor,
-                  gridColor: _border.withOpacity(0.65),
-                ),
-                child: const SizedBox.expand(),
+              child: Row(
+                children: [
+                  const SizedBox(width: 2),
+                  SizedBox(
+                    width: 58,
+                    child: _buildYAxisLabels(
+                      minValue: minValue,
+                      maxValue: maxValue,
+                      metricKey: metricKey,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: CustomPaint(
+                            painter: _SensorLineChartPainter(
+                              values: chartValues,
+                              minValues: chartMinValues,
+                              maxValues: chartMaxValues,
+                              axisMin: minValue,
+                              axisMax: maxValue,
+                              lineColor: activeColor,
+                              gridColor: _border.withOpacity(0.65),
+                            ),
+                            child: const SizedBox.expand(),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        _buildXAxisLabels(chartPoints),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const SizedBox(width: 58),
+                  const SizedBox(width: 2),
+                ],
               ),
             ),
             const SizedBox(height: 10),
-            Row(
-              children: [
-                Text(
-                  'Min: ${_formatMetricValue(chartValues.reduce(math.min), selectedKey)}',
-                  style: const TextStyle(
-                    color: _textSecondary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  'Maks: ${_formatMetricValue(chartValues.reduce(math.max), selectedKey)}',
-                  style: const TextStyle(
-                    color: _textSecondary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Nilai terbaru: ${_formatMetricValue(chartValues.last, selectedKey)}',
-              style: const TextStyle(
-                color: _textPrimary,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 4),
             Center(
               child: Text(
-                'Data ${_periods[_selectedPeriod].toLowerCase()} terakhir - $_selectedKolam',
+                'Rentang data agregasi: ${_formatDateTimeLabel(oldestDataTime)} - ${_formatDateTimeLabel(latestDataTime)} • $_selectedKolam',
                 style: const TextStyle(color: _muted, fontSize: 12),
+                textAlign: TextAlign.center,
               ),
             ),
           ],
@@ -1137,7 +1965,8 @@ class _RiwayatDataPageState extends State<RiwayatDataPage> {
           backgroundColor: bgColor,
           foregroundColor: textColor,
           elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
         ),
         child: Row(
@@ -1183,6 +2012,62 @@ class _RiwayatDataPageState extends State<RiwayatDataPage> {
   }
 }
 
+class _MetricSeriesBundle {
+  const _MetricSeriesBundle({
+    required this.valuesByMetric,
+    required this.timestampsByMetric,
+  });
+
+  final Map<String, List<double>> valuesByMetric;
+  final Map<String, List<DateTime?>> timestampsByMetric;
+}
+
+class _ChartDataPoint {
+  const _ChartDataPoint({
+    required this.value,
+    required this.timestamp,
+    this.minValue,
+    this.maxValue,
+  });
+
+  final double value;
+  final DateTime? timestamp;
+  final double? minValue;
+  final double? maxValue;
+}
+
+class _RingkasanMetricItem {
+  const _RingkasanMetricItem({
+    required this.label,
+    required this.value,
+    required this.trend,
+    required this.trendUp,
+  });
+
+  final String label;
+  final String value;
+  final String trend;
+  final bool? trendUp;
+}
+
+class _AggregationBucket {
+  double _sum = 0;
+  int _count = 0;
+  double? _min;
+  double? _max;
+
+  void add(double value) {
+    _sum += value;
+    _count += 1;
+    _min = _min == null ? value : math.min(_min!, value);
+    _max = _max == null ? value : math.max(_max!, value);
+  }
+
+  double get average => _count == 0 ? 0 : _sum / _count;
+  double get min => _min ?? 0;
+  double get max => _max ?? 0;
+}
+
 class _TimelineItem {
   const _TimelineItem({
     required this.title,
@@ -1202,11 +2087,19 @@ class _TimelineItem {
 class _SensorLineChartPainter extends CustomPainter {
   const _SensorLineChartPainter({
     required this.values,
+    required this.minValues,
+    required this.maxValues,
+    required this.axisMin,
+    required this.axisMax,
     required this.lineColor,
     required this.gridColor,
   });
 
   final List<double> values;
+  final List<double> minValues;
+  final List<double> maxValues;
+  final double axisMin;
+  final double axisMax;
   final Color lineColor;
   final Color gridColor;
 
@@ -1216,9 +2109,17 @@ class _SensorLineChartPainter extends CustomPainter {
       return;
     }
 
-    final minValue = values.reduce(math.min);
-    final maxValue = values.reduce(math.max);
-    final range = (maxValue - minValue).abs() < 0.0001 ? 1.0 : (maxValue - minValue);
+    final hasRangeBars =
+        minValues.length == values.length && maxValues.length == values.length;
+
+    final minValue = math.min(axisMin, axisMax);
+    final maxValue = math.max(axisMin, axisMax);
+    final range =
+        (maxValue - minValue).abs() < 0.0001 ? 1.0 : (maxValue - minValue);
+    const verticalPadding = 10.0;
+    const horizontalPadding = 8.0;
+    final drawableHeight = size.height - (verticalPadding * 2);
+    final drawableWidth = size.width - (horizontalPadding * 2);
 
     final gridPaint = Paint()
       ..color = gridColor
@@ -1230,64 +2131,98 @@ class _SensorLineChartPainter extends CustomPainter {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
 
-    final points = <Offset>[];
-    final stepX = values.length == 1 ? 0.0 : size.width / (values.length - 1);
-
-    for (int i = 0; i < values.length; i++) {
-      final normalizedY = (values[i] - minValue) / range;
-      points.add(
-        Offset(
-          stepX * i,
-          size.height - (normalizedY * size.height),
-        ),
-      );
+    const verticalLines = 2;
+    for (int i = 0; i <= verticalLines; i++) {
+      final x = size.width * i / verticalLines;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
     }
 
-    final linePath = Path();
-    final fillPath = Path();
+    List<Offset> buildPoints(List<double> sourceValues) {
+      final points = <Offset>[];
+      final stepX = sourceValues.length == 1
+          ? 0.0
+          : drawableWidth / (sourceValues.length - 1);
 
-    for (int i = 0; i < points.length; i++) {
-      final point = points[i];
-      if (i == 0) {
-        linePath.moveTo(point.dx, point.dy);
-        fillPath.moveTo(point.dx, size.height);
-        fillPath.lineTo(point.dx, point.dy);
-      } else {
-        linePath.lineTo(point.dx, point.dy);
-        fillPath.lineTo(point.dx, point.dy);
+      for (int i = 0; i < sourceValues.length; i++) {
+        final normalizedY = (sourceValues[i] - minValue) / range;
+        points.add(
+          Offset(
+            horizontalPadding + (stepX * i),
+            verticalPadding + ((1 - normalizedY) * drawableHeight),
+          ),
+        );
       }
+
+      return points;
     }
 
-    fillPath.lineTo(size.width, size.height);
-    fillPath.close();
+    Path buildPath(List<Offset> sourcePoints) {
+      final path = Path();
+      for (int i = 0; i < sourcePoints.length; i++) {
+        final point = sourcePoints[i];
+        if (i == 0) {
+          path.moveTo(point.dx, point.dy);
+        } else {
+          path.lineTo(point.dx, point.dy);
+        }
+      }
+      return path;
+    }
 
-    final fillPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          lineColor.withOpacity(0.25),
-          lineColor.withOpacity(0.03),
-        ],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
-      ..style = PaintingStyle.fill;
+    final linePoints = buildPoints(values);
+
+    final rangePaint = Paint()
+      ..color = lineColor.withOpacity(0.24)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.3
+      ..strokeCap = StrokeCap.round;
 
     final linePaint = Paint()
       ..color = lineColor
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.6
+      ..strokeWidth = 2.8
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
-    canvas.drawPath(fillPath, fillPaint);
-    canvas.drawPath(linePath, linePaint);
+    if (hasRangeBars) {
+      for (int i = 0; i < linePoints.length; i++) {
+        final normalizedMinY = (minValues[i] - minValue) / range;
+        final normalizedMaxY = (maxValues[i] - minValue) / range;
 
-    final pointPaint = Paint()..color = lineColor;
-    for (final point in points) {
-      canvas.drawCircle(point, 2.6, pointPaint);
+        final minY = verticalPadding + ((1 - normalizedMinY) * drawableHeight);
+        final maxY = verticalPadding + ((1 - normalizedMaxY) * drawableHeight);
+
+        canvas.drawLine(
+          Offset(linePoints[i].dx, maxY),
+          Offset(linePoints[i].dx, minY),
+          rangePaint,
+        );
+      }
     }
 
-    final latestPoint = points.last;
+    canvas.drawPath(buildPath(linePoints), linePaint);
+
+    final pointPaint = Paint()..color = lineColor;
+    final shouldDrawAllPoints = linePoints.length <= 48;
+    if (shouldDrawAllPoints) {
+      for (final point in linePoints) {
+        canvas.drawCircle(point, 2.2, pointPaint);
+      }
+    }
+
+    final latestPoint = linePoints.last;
+    canvas.drawLine(
+      Offset(latestPoint.dx, 0),
+      Offset(latestPoint.dx, size.height),
+      Paint()
+        ..color = lineColor.withOpacity(0.2)
+        ..strokeWidth = 1.1,
+    );
+    canvas.drawCircle(
+      latestPoint,
+      7,
+      Paint()..color = lineColor.withOpacity(0.18),
+    );
     canvas.drawCircle(latestPoint, 5, pointPaint);
     canvas.drawCircle(latestPoint, 2, Paint()..color = Colors.white);
   }
@@ -1295,6 +2230,10 @@ class _SensorLineChartPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _SensorLineChartPainter oldDelegate) {
     return oldDelegate.values != values ||
+        oldDelegate.minValues != minValues ||
+        oldDelegate.maxValues != maxValues ||
+        oldDelegate.axisMin != axisMin ||
+        oldDelegate.axisMax != axisMax ||
         oldDelegate.lineColor != lineColor ||
         oldDelegate.gridColor != gridColor;
   }

@@ -19,7 +19,6 @@ class _KalibrasiSensorPageState extends State<KalibrasiSensorPage> {
   static const Color _border = Color(0xFFE5E7EB);
   static const Color _success = Color(0xFF10B981);
   static const Color _warning = Color(0xFFFFA500);
-  static const Color _danger = Color(0xFFEF4444);
 
   @override
   Widget build(BuildContext context) {
