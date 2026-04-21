@@ -1,6 +1,7 @@
 // ignore_for_file: file_names
 
 import 'package:flutter/material.dart';
+import 'package:my_app/Services/NotificationService.dart';
 import 'package:my_app/pages/ProfilePages/ManajemenKolam.dart';
 import 'package:my_app/pages/ProfilePages/AlertDanNotifikasi.dart';
 import 'package:my_app/pages/ProfilePages/RiwayatData.dart';
@@ -185,15 +186,7 @@ class ProfileScreen extends StatelessWidget {
         ListTile(
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          leading: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: _cardBackground,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(item.icon, color: _iconAccent),
-          ),
+          leading: _buildMenuLeading(item),
           title: Text(
             item.title,
             style: const TextStyle(
@@ -249,6 +242,60 @@ class ProfileScreen extends StatelessWidget {
         if (item != _menuDividerSentinel)
           const Divider(height: 1, thickness: 1, color: _border),
       ],
+    );
+  }
+
+  Widget _buildMenuLeading(_MenuItemData item) {
+    final base = Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: _cardBackground,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(item.icon, color: _iconAccent),
+    );
+
+    if (!item.isNotificationAlert) {
+      return base;
+    }
+
+    return ValueListenableBuilder<int>(
+      valueListenable: NotificationPopupManager.unreadCountNotifier,
+      builder: (_, unreadCount, __) {
+        if (unreadCount <= 0) {
+          return base;
+        }
+
+        final badgeText = unreadCount > 99 ? '99+' : '$unreadCount';
+
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            base,
+            Positioned(
+              right: -7,
+              top: -6,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: _danger,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: Colors.white, width: 1.2),
+                ),
+                child: Text(
+                  badgeText,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
