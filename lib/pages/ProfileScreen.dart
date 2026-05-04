@@ -2,7 +2,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:my_app/Services/NotificationService.dart';
-import 'package:my_app/pages/ProfilePages/ManajemenKolam.dart';
 import 'package:my_app/pages/ProfilePages/AlertDanNotifikasi.dart';
 import 'package:my_app/pages/ProfilePages/RiwayatData.dart';
 import 'package:my_app/pages/ProfilePages/KalibrasiSensor.dart';
@@ -131,12 +130,6 @@ class ProfileScreen extends StatelessWidget {
   Widget _buildMenuCard(BuildContext context) {
     final items = <_MenuItemData>[
       const _MenuItemData(
-        icon: Icons.waves,
-        title: 'Manajemen Kolam',
-        subtitle: '3 Kolam Aktif',
-        isPondManagement: true,
-      ),
-      const _MenuItemData(
         icon: Icons.notifications_active_outlined,
         title: 'Notifikasi & Alert',
         subtitle: 'Atur peringatan sistem',
@@ -200,13 +193,7 @@ class ProfileScreen extends StatelessWidget {
           ),
           trailing: const Icon(Icons.chevron_right, color: _muted),
           onTap: () {
-            if (item.isPondManagement) {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const ManajemenKolamPage(),
-                ),
-              );
-            } else if (item.isNotificationAlert) {
+            if (item.isNotificationAlert) {
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => const AlertDanNotifikasiPage(),
@@ -370,7 +357,6 @@ class _MenuItemData {
     required this.icon,
     required this.title,
     required this.subtitle,
-    this.isPondManagement = false,
     this.isNotificationAlert = false,
     this.isRiwayatData = false,
     this.isKalibrasiSensor = false,
@@ -381,7 +367,6 @@ class _MenuItemData {
   final IconData icon;
   final String title;
   final String subtitle;
-  final bool isPondManagement;
   final bool isNotificationAlert;
   final bool isRiwayatData;
   final bool isKalibrasiSensor;

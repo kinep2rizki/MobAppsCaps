@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:my_app/pages/HomePage.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:my_app/pages/LoginFeature/Login.dart';
+import 'package:my_app/pages/LoginFeature/Auth.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -14,14 +15,55 @@ class _LoginPageState extends State<LoginPage> {
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
   bool _rememberMe = false;
+  bool _isLoading = false;
 
   Future<void> _login() async {
-    const String dummyEmail = 'kinep2@gmail.com';
-    const String dummyPassword = 'kinep';
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
 
-    if (_emailController.text == dummyEmail && _passwordController.text == dummyPassword) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('isLoggedIn', true);
+    final validationMessage = LoginController.validateCredentials(
+      email: email,
+      password: password,
+    );
+
+    if (validationMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(validationMessage),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final result = await LoginController.submitLogin(
+        email: email,
+        password: password,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (!result.success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.message),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      await LoginController.persistLoginSession(
+        email: email,
+        result: result,
+      );
 
       if (mounted) {
         Navigator.pushReplacement(
@@ -29,14 +71,20 @@ class _LoginPageState extends State<LoginPage> {
           MaterialPageRoute(builder: (context) => const HomePage()),
         );
       }
-    } else {
+    } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Email atau Password salah!'),
+          SnackBar(
+            content: Text('Login gagal: $error'),
             backgroundColor: Colors.red,
           ),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }
@@ -69,11 +117,26 @@ class _LoginPageState extends State<LoginPage> {
         child: Stack(
           children: [
             // Decorative circles
-            Positioned(top: size.height * 0.1, left: -size.width * 0.1, child: _buildCircle(150)),
-            Positioned(top: size.height * 0.2, right: -size.width * 0.05, child: _buildCircle(50)),
-            Positioned(top: size.height * 0.4, right: size.width * 0.1, child: _buildCircle(20)),
-            Positioned(bottom: -size.height * 0.1, right: -size.width * 0.2, child: _buildCircle(250)),
-            Positioned(bottom: size.height * 0.15, left: size.width * 0.1, child: _buildCircle(30)),
+            Positioned(
+                top: size.height * 0.1,
+                left: -size.width * 0.1,
+                child: _buildCircle(150)),
+            Positioned(
+                top: size.height * 0.2,
+                right: -size.width * 0.05,
+                child: _buildCircle(50)),
+            Positioned(
+                top: size.height * 0.4,
+                right: size.width * 0.1,
+                child: _buildCircle(20)),
+            Positioned(
+                bottom: -size.height * 0.1,
+                right: -size.width * 0.2,
+                child: _buildCircle(250)),
+            Positioned(
+                bottom: size.height * 0.15,
+                left: size.width * 0.1,
+                child: _buildCircle(30)),
 
             SafeArea(
               child: SingleChildScrollView(
@@ -122,7 +185,8 @@ class _LoginPageState extends State<LoginPage> {
             color: Colors.blue,
             shape: BoxShape.circle,
           ),
-          child: const Icon(Icons.water_drop_outlined, color: Colors.white, size: 50),
+          child: const Icon(Icons.water_drop_outlined,
+              color: Colors.white, size: 50),
         ),
         const SizedBox(height: 16),
         const Text(
@@ -184,7 +248,8 @@ class _LoginPageState extends State<LoginPage> {
             decoration: InputDecoration(
               hintText: 'admin@nilafarm.com',
               hintStyle: const TextStyle(color: iconAndPlaceholderColor),
-              prefixIcon: const Icon(Icons.email_outlined, color: iconAndPlaceholderColor),
+              prefixIcon: const Icon(Icons.email_outlined,
+                  color: iconAndPlaceholderColor),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: const BorderSide(color: strokeColor),
@@ -209,7 +274,8 @@ class _LoginPageState extends State<LoginPage> {
             decoration: InputDecoration(
               hintText: '••••••••',
               hintStyle: const TextStyle(color: iconAndPlaceholderColor),
-              prefixIcon: const Icon(Icons.lock_outline, color: iconAndPlaceholderColor),
+              prefixIcon: const Icon(Icons.lock_outline,
+                  color: iconAndPlaceholderColor),
               suffixIcon: IconButton(
                 icon: Icon(
                   _isPasswordVisible ? Icons.visibility_off : Icons.visibility,
@@ -263,7 +329,7 @@ class _LoginPageState extends State<LoginPage> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _login,
+              onPressed: _isLoading ? null : _login,
               style: ElevatedButton.styleFrom(
                 backgroundColor: accentColor,
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -271,22 +337,38 @@ class _LoginPageState extends State<LoginPage> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: const Text(
-                'Masuk',
-                style: TextStyle(fontSize: 16, color: Colors.white),
-              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Text(
+                      'Masuk',
+                      style: TextStyle(fontSize: 16, color: Colors.white),
+                    ),
             ),
           ),
           const SizedBox(height: 24),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text('Belum punya akun? ', style: TextStyle(color: Colors.grey[600])),
+              Text('Belum punya akun? ',
+                  style: TextStyle(color: Colors.grey[600])),
               TextButton(
-                onPressed: () {},
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SignupPage()),
+                  );
+                },
                 child: const Text(
                   'Daftar Sekarang!',
-                  style: TextStyle(fontWeight: FontWeight.bold, color: accentColor),
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, color: accentColor),
                 ),
               ),
             ],
