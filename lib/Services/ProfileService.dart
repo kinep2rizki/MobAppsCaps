@@ -1,0 +1,486 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'api_service.dart';
+
+class ProfileUser {
+  final int? id;
+  final String? email;
+  final String? fullName;
+  final String? phoneNumber;
+  final String? greenhouseLocation;
+  final String? address;
+  final String? profilePhotoUrl;
+  final DateTime? createdAt;
+
+  const ProfileUser({
+    this.id,
+    this.email,
+    this.fullName,
+    this.phoneNumber,
+    this.greenhouseLocation,
+    this.address,
+    this.profilePhotoUrl,
+    this.createdAt,
+  });
+
+  factory ProfileUser.fromJson(Map<String, dynamic> json) {
+    return ProfileUser(
+      id: _asInt(json['id']),
+      email: _asString(json['email']),
+      fullName: _asString(json['full_name'] ?? json['fullName']),
+      phoneNumber: _asString(json['phone_number'] ?? json['phoneNumber']),
+      greenhouseLocation:
+          _asString(json['greenhouse_location'] ?? json['greenhouseLocation']),
+      address: _asString(json['address']),
+      profilePhotoUrl:
+          _asString(json['profile_photo_url'] ?? json['profilePhotoUrl']),
+      createdAt: _asDateTime(json['created_at'] ?? json['createdAt']),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (id != null) 'id': id,
+      if (email != null) 'email': email,
+      if (fullName != null) 'full_name': fullName,
+      if (phoneNumber != null) 'phone_number': phoneNumber,
+      if (greenhouseLocation != null) 'greenhouse_location': greenhouseLocation,
+      if (address != null) 'address': address,
+      if (profilePhotoUrl != null) 'profile_photo_url': profilePhotoUrl,
+      if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
+    };
+  }
+
+  static int? _asInt(Object? value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    if (value is String) {
+      return int.tryParse(value);
+    }
+    return null;
+  }
+
+  static String? _asString(Object? value) {
+    if (value == null) {
+      return null;
+    }
+    final text = value.toString().trim();
+    return text.isEmpty ? null : text;
+  }
+
+  static DateTime? _asDateTime(Object? value) {
+    if (value is DateTime) {
+      return value;
+    }
+    if (value is String && value.trim().isNotEmpty) {
+      return DateTime.tryParse(value);
+    }
+    return null;
+  }
+}
+
+class ProfileResult {
+  final bool success;
+  final String message;
+  final ProfileUser? profile;
+
+  const ProfileResult({
+    required this.success,
+    required this.message,
+    this.profile,
+  });
+}
+
+class ProfileService {
+  static const String baseUrl = ApiService.baseUrl;
+  static const Duration requestTimeout = Duration(seconds: 20);
+
+  static Future<ProfileResult> uploadProfilePhoto({
+    required File photoFile,
+    http.Client? client,
+    String? overrideBaseUrl,
+    String? authToken,
+  }) async {
+    final resolvedToken = authToken ?? await _readStoredToken();
+    if (resolvedToken == null || resolvedToken.trim().isEmpty) {
+      return const ProfileResult(
+        success: false,
+        message: 'Token autentikasi tidak ditemukan. Silakan login ulang.',
+      );
+    }
+
+    final httpClient = client ?? http.Client();
+    final shouldCloseClient = client == null;
+
+    try {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('${_resolveBaseUrl(overrideBaseUrl)}/auth/upload-photo'),
+      )
+        ..headers.addAll({
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $resolvedToken',
+        })
+        ..files.add(
+          await http.MultipartFile.fromPath('file', photoFile.path),
+        );
+
+      final streamedResponse = await httpClient.send(request).timeout(
+            requestTimeout,
+          );
+      final response = await http.Response.fromStream(streamedResponse);
+      final decodedBody = _decodeResponseBody(response.body);
+
+      if (response.statusCode != 200) {
+        debugPrint(
+          'ProfileService POST /auth/upload-photo failed with status ${response.statusCode}: '
+          '${response.body}',
+        );
+
+        return ProfileResult(
+          success: false,
+          message: _extractMessage(decodedBody) ??
+              'Gagal mengupload foto profile (${response.statusCode})',
+        );
+      }
+
+      final responseMap = _extractMap(decodedBody);
+      final profileMap = _extractProfileMap(responseMap);
+
+      return ProfileResult(
+        success: true,
+        message:
+            _extractMessage(responseMap) ?? 'Foto profile berhasil diperbarui',
+        profile: profileMap == null ? null : ProfileUser.fromJson(profileMap),
+      );
+    } on TimeoutException {
+      return const ProfileResult(
+        success: false,
+        message: 'Request timeout. Server terlalu lama merespons, coba lagi.',
+      );
+    } catch (error) {
+      return ProfileResult(
+        success: false,
+        message: 'Tidak dapat mengupload foto profile: $error',
+      );
+    } finally {
+      if (shouldCloseClient) {
+        httpClient.close();
+      }
+    }
+  }
+
+  static Future<ProfileResult> updateMyProfile({
+    required String fullName,
+    required String phoneNumber,
+    required String greenhouseLocation,
+    required String address,
+    http.Client? client,
+    String? overrideBaseUrl,
+    String? authToken,
+  }) async {
+    final resolvedToken = authToken ?? await _readStoredToken();
+    if (resolvedToken == null || resolvedToken.trim().isEmpty) {
+      return const ProfileResult(
+        success: false,
+        message: 'Token autentikasi tidak ditemukan. Silakan login ulang.',
+      );
+    }
+
+    final payload = <String, dynamic>{
+      'full_name': fullName.trim(),
+      'phone_number': phoneNumber.trim(),
+      'greenhouse_location': greenhouseLocation.trim(),
+      'address': address.trim(),
+    };
+
+    final httpClient = client ?? http.Client();
+    final shouldCloseClient = client == null;
+
+    try {
+      final response = await httpClient
+          .put(
+            Uri.parse('${_resolveBaseUrl(overrideBaseUrl)}/auth/me'),
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $resolvedToken',
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(requestTimeout);
+
+      final decodedBody = _decodeResponseBody(response.body);
+
+      if (response.statusCode != 200) {
+        debugPrint(
+          'ProfileService PUT /auth/me failed with status ${response.statusCode}: '
+          '${response.body}',
+        );
+
+        return ProfileResult(
+          success: false,
+          message: _extractMessage(decodedBody) ??
+              'Gagal memperbarui profile (${response.statusCode})',
+        );
+      }
+
+      final responseMap = _extractMap(decodedBody);
+      final profileMap = _extractProfileMap(responseMap);
+
+      return ProfileResult(
+        success: true,
+        message: _extractMessage(responseMap) ?? 'Profile berhasil diperbarui',
+        profile: profileMap == null ? null : ProfileUser.fromJson(profileMap),
+      );
+    } on TimeoutException {
+      return const ProfileResult(
+        success: false,
+        message: 'Request timeout. Server terlalu lama merespons, coba lagi.',
+      );
+    } catch (error) {
+      return ProfileResult(
+        success: false,
+        message: 'Tidak dapat memperbarui profile: $error',
+      );
+    } finally {
+      if (shouldCloseClient) {
+        httpClient.close();
+      }
+    }
+  }
+
+  static Future<ProfileResult> getMyProfile({
+    http.Client? client,
+    String? overrideBaseUrl,
+    String? authToken,
+  }) async {
+    final resolvedToken = authToken ?? await _readStoredToken();
+    if (resolvedToken == null || resolvedToken.trim().isEmpty) {
+      return const ProfileResult(
+        success: false,
+        message: 'Token autentikasi tidak ditemukan. Silakan login ulang.',
+      );
+    }
+
+    final httpClient = client ?? http.Client();
+    final shouldCloseClient = client == null;
+
+    try {
+      final response = await httpClient.get(
+        Uri.parse('${_resolveBaseUrl(overrideBaseUrl)}/auth/me'),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $resolvedToken',
+        },
+      ).timeout(requestTimeout);
+
+      final decodedBody = _decodeResponseBody(response.body);
+
+      if (response.statusCode != 200) {
+        debugPrint(
+          'ProfileService /auth/me failed with status ${response.statusCode}: '
+          '${response.body}',
+        );
+
+        return ProfileResult(
+          success: false,
+          message: _extractMessage(decodedBody) ??
+              'Gagal mengambil profile (${response.statusCode})',
+        );
+      }
+
+      final responseMap = _extractMap(decodedBody);
+      final profileMap = _extractProfileMap(responseMap);
+
+      if (profileMap == null) {
+        return const ProfileResult(
+          success: false,
+          message: 'Format respons profile tidak sesuai.',
+        );
+      }
+
+      return ProfileResult(
+        success: true,
+        message: _extractMessage(responseMap) ?? 'Profile berhasil dimuat',
+        profile: ProfileUser.fromJson(profileMap),
+      );
+    } on TimeoutException {
+      return const ProfileResult(
+        success: false,
+        message: 'Request timeout. Server terlalu lama merespons, coba lagi.',
+      );
+    } catch (error) {
+      return ProfileResult(
+        success: false,
+        message: 'Tidak dapat mengambil profile: $error',
+      );
+    } finally {
+      if (shouldCloseClient) {
+        httpClient.close();
+      }
+    }
+  }
+
+  static String _resolveBaseUrl(String? overrideBaseUrl) {
+    final value = overrideBaseUrl?.trim();
+    if (value == null || value.isEmpty || value.toLowerCase() == 'null') {
+      return baseUrl;
+    }
+
+    return value.endsWith('/') ? value.substring(0, value.length - 1) : value;
+  }
+
+  static Object? _decodeResponseBody(String body) {
+    if (body.isEmpty) {
+      return null;
+    }
+
+    try {
+      return jsonDecode(body);
+    } catch (_) {
+      return body;
+    }
+  }
+
+  static Map<String, dynamic> _extractMap(Object? decodedBody) {
+    if (decodedBody is Map<String, dynamic>) {
+      return decodedBody;
+    }
+    if (decodedBody is Map) {
+      return Map<String, dynamic>.from(decodedBody);
+    }
+    return <String, dynamic>{};
+  }
+
+  static Map<String, dynamic>? _extractProfileMap(
+    Map<String, dynamic> responseMap,
+  ) {
+    final candidates = <Object?>[
+      responseMap,
+      responseMap['data'],
+      responseMap['user'],
+      responseMap['profile'],
+    ];
+
+    for (final candidate in candidates) {
+      if (candidate is Map<String, dynamic>) {
+        return candidate;
+      }
+      if (candidate is Map) {
+        return Map<String, dynamic>.from(candidate);
+      }
+    }
+
+    return null;
+  }
+
+  static String? _extractMessage(Object? decodedBody) {
+    if (decodedBody is Map) {
+      final dynamic message =
+          decodedBody['message'] ?? decodedBody['error'] ?? decodedBody['msg'];
+      if (message is String && message.trim().isNotEmpty) {
+        return message;
+      }
+
+      final dynamic detail = decodedBody['detail'];
+      final String? detailMessage = _extractFastApiDetailMessage(detail);
+      if (detailMessage != null) {
+        return detailMessage;
+      }
+
+      final dynamic data = decodedBody['data'];
+      if (data is Map) {
+        final dynamic nestedMessage = data['message'] ?? data['error'];
+        if (nestedMessage is String && nestedMessage.trim().isNotEmpty) {
+          return nestedMessage;
+        }
+      }
+    }
+
+    if (decodedBody is String && decodedBody.trim().isNotEmpty) {
+      return decodedBody;
+    }
+
+    return null;
+  }
+
+  static String? _extractFastApiDetailMessage(Object? detail) {
+    if (detail == null) {
+      return null;
+    }
+
+    if (detail is String && detail.trim().isNotEmpty) {
+      return detail;
+    }
+
+    if (detail is List) {
+      final messages = <String>[];
+
+      for (final item in detail) {
+        if (item is Map) {
+          final dynamic loc = item['loc'];
+          final dynamic msg = item['msg'];
+
+          final locText = _formatFastApiLocation(loc);
+          final msgText = msg is String ? msg : item.toString();
+
+          if (locText.isNotEmpty) {
+            messages.add('$locText: $msgText');
+          } else {
+            messages.add(msgText);
+          }
+        } else if (item != null) {
+          messages.add(item.toString());
+        }
+      }
+
+      if (messages.isNotEmpty) {
+        return messages.join('; ');
+      }
+    }
+
+    if (detail is Map && detail.isNotEmpty) {
+      return detail.toString();
+    }
+
+    return null;
+  }
+
+  static String _formatFastApiLocation(Object? loc) {
+    if (loc is List && loc.isNotEmpty) {
+      return loc.map((part) => part.toString()).join('.');
+    }
+
+    if (loc is String) {
+      return loc;
+    }
+
+    return '';
+  }
+
+  static Future<String?> _readStoredToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('authToken');
+    if (token != null && token.trim().isNotEmpty) {
+      return token.trim();
+    }
+
+    final fallbackToken = prefs.getString('accessToken');
+    if (fallbackToken != null && fallbackToken.trim().isNotEmpty) {
+      return fallbackToken.trim();
+    }
+
+    return null;
+  }
+}

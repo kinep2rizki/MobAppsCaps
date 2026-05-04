@@ -1,6 +1,7 @@
 // ignore_for_file: file_names
 
 import 'package:flutter/material.dart';
+import 'package:my_app/Services/ProfileService.dart';
 import 'package:my_app/Services/NotificationService.dart';
 import 'package:my_app/pages/ProfilePages/AlertDanNotifikasi.dart';
 import 'package:my_app/pages/ProfilePages/RiwayatData.dart';
@@ -10,8 +11,29 @@ import 'package:my_app/pages/ProfilePages/PengaturanSistem.dart';
 import 'package:my_app/pages/login_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  late Future<ProfileResult> _profileFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _profileFuture = ProfileService.getMyProfile();
+  }
+
+  Future<void> _refreshProfile() async {
+    setState(() {
+      _profileFuture = ProfileService.getMyProfile();
+    });
+
+    await _profileFuture;
+  }
 
   static const Color _primary = Color(0xFF2563EB);
   static const Color _background = Color(0xFFF9FAFB);
@@ -30,20 +52,41 @@ class ProfileScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: _background,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(),
-              const SizedBox(height: 20),
-              _buildProfileCard(),
-              const SizedBox(height: 20),
-              _buildMenuCard(context),
-              const SizedBox(height: 24),
-              _buildLogoutButton(context),
-            ],
-          ),
+        child: FutureBuilder<ProfileResult>(
+          future: _profileFuture,
+          builder: (context, snapshot) {
+            final result = snapshot.data;
+            final isLoading =
+                snapshot.connectionState == ConnectionState.waiting;
+            final profile = result?.profile;
+            final errorMessage = snapshot.hasError
+                ? snapshot.error.toString()
+                : (result != null && !result.success ? result.message : null);
+
+            return RefreshIndicator(
+              onRefresh: _refreshProfile,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildHeader(),
+                    const SizedBox(height: 20),
+                    _buildProfileCard(
+                      profile: profile,
+                      isLoading: isLoading,
+                      errorMessage: errorMessage,
+                    ),
+                    const SizedBox(height: 20),
+                    _buildMenuCard(context),
+                    const SizedBox(height: 24),
+                    _buildLogoutButton(context),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -82,7 +125,15 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildProfileCard() {
+  Widget _buildProfileCard({
+    required ProfileUser? profile,
+    required bool isLoading,
+    required String? errorMessage,
+  }) {
+    final displayName = profile?.fullName ?? 'Data profile belum tersedia';
+    final displayGreenhouse = profile?.greenhouseLocation ?? '-';
+    final displayEmail = profile?.email ?? '-';
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -90,35 +141,54 @@ class ProfileScreen extends StatelessWidget {
         color: _primary,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: const Row(
+      child: Row(
         children: [
           CircleAvatar(
             radius: 28,
             backgroundColor: _highlight,
-            child: Icon(Icons.person, color: _primary, size: 30),
+            child: isLoading
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      valueColor: AlwaysStoppedAnimation<Color>(_primary),
+                    ),
+                  )
+                : const Icon(Icons.person, color: _primary, size: 30),
           ),
-          SizedBox(width: 16),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Budidaya Nila',
-                  style: TextStyle(
+                  displayName,
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                SizedBox(height: 4),
+                const SizedBox(height: 4),
                 Text(
-                  'Greenhouse Telu',
-                  style: TextStyle(color: Colors.white70),
+                  displayGreenhouse,
+                  style: const TextStyle(color: Colors.white70),
                 ),
                 Text(
-                  'gthelyu@gmail.com',
-                  style: TextStyle(color: Colors.white70),
+                  displayEmail,
+                  style: const TextStyle(color: Colors.white70),
                 ),
+                if (errorMessage != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    errorMessage,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
