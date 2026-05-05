@@ -1,4 +1,5 @@
 import 'package:my_app/Services/AuthService.dart';
+import 'package:my_app/Services/ProfileService.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginController {
@@ -42,5 +43,6 @@ class LoginController {
     if (result.tokenType != null) {
       await prefs.setString('tokenType', result.tokenType!);
     }
+    await ProfileService.saveCachedProfileFromMap(result.user);
   }
 }

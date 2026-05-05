@@ -104,6 +104,54 @@ class ProfileResult {
 class ProfileService {
   static const String baseUrl = ApiService.baseUrl;
   static const Duration requestTimeout = Duration(seconds: 20);
+  static const String _cachedProfileKey = 'cachedProfile';
+
+  static Future<void> saveCachedProfile(ProfileUser? profile) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (profile == null) {
+      await prefs.remove(_cachedProfileKey);
+      return;
+    }
+
+    await prefs.setString(_cachedProfileKey, jsonEncode(profile.toJson()));
+  }
+
+  static Future<ProfileUser?> getCachedProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawProfile = prefs.getString(_cachedProfileKey);
+    if (rawProfile == null || rawProfile.trim().isEmpty) {
+      return null;
+    }
+
+    try {
+      final decoded = jsonDecode(rawProfile);
+      if (decoded is Map<String, dynamic>) {
+        return ProfileUser.fromJson(decoded);
+      }
+      if (decoded is Map) {
+        return ProfileUser.fromJson(Map<String, dynamic>.from(decoded));
+      }
+    } catch (_) {
+      return null;
+    }
+
+    return null;
+  }
+
+  static Future<void> clearCachedProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_cachedProfileKey);
+  }
+
+  static Future<void> saveCachedProfileFromMap(
+    Map<String, dynamic>? profileMap,
+  ) async {
+    if (profileMap == null || profileMap.isEmpty) {
+      return;
+    }
+
+    await saveCachedProfile(ProfileUser.fromJson(profileMap));
+  }
 
   static Future<ProfileResult> changePassword({
     required String oldPassword,
@@ -230,12 +278,17 @@ class ProfileService {
 
       final responseMap = _extractMap(decodedBody);
       final profileMap = _extractProfileMap(responseMap);
+      final profile = profileMap == null ? null : ProfileUser.fromJson(profileMap);
+
+      if (profile != null) {
+        await saveCachedProfile(profile);
+      }
 
       return ProfileResult(
         success: true,
         message:
             _extractMessage(responseMap) ?? 'Foto profile berhasil diperbarui',
-        profile: profileMap == null ? null : ProfileUser.fromJson(profileMap),
+        profile: profile,
       );
     } on TimeoutException {
       return const ProfileResult(
@@ -311,11 +364,16 @@ class ProfileService {
 
       final responseMap = _extractMap(decodedBody);
       final profileMap = _extractProfileMap(responseMap);
+      final profile = profileMap == null ? null : ProfileUser.fromJson(profileMap);
+
+      if (profile != null) {
+        await saveCachedProfile(profile);
+      }
 
       return ProfileResult(
         success: true,
         message: _extractMessage(responseMap) ?? 'Profile berhasil diperbarui',
-        profile: profileMap == null ? null : ProfileUser.fromJson(profileMap),
+        profile: profile,
       );
     } on TimeoutException {
       return const ProfileResult(
@@ -338,7 +396,19 @@ class ProfileService {
     http.Client? client,
     String? overrideBaseUrl,
     String? authToken,
+    bool useCache = true,
   }) async {
+    if (useCache) {
+      final cachedProfile = await getCachedProfile();
+      if (cachedProfile != null) {
+        return ProfileResult(
+          success: true,
+          message: 'Profile berhasil dimuat dari cache',
+          profile: cachedProfile,
+        );
+      }
+    }
+
     final resolvedToken = authToken ?? await _readStoredToken();
     if (resolvedToken == null || resolvedToken.trim().isEmpty) {
       return const ProfileResult(
@@ -384,10 +454,13 @@ class ProfileService {
         );
       }
 
+      final profile = ProfileUser.fromJson(profileMap);
+      await saveCachedProfile(profile);
+
       return ProfileResult(
         success: true,
         message: _extractMessage(responseMap) ?? 'Profile berhasil dimuat',
-        profile: ProfileUser.fromJson(profileMap),
+        profile: profile,
       );
     } on TimeoutException {
       return const ProfileResult(

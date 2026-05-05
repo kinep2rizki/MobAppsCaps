@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:my_app/Services/AuthService.dart';
+import 'package:my_app/Services/ProfileService.dart';
 import 'package:my_app/pages/HomePage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -97,6 +98,7 @@ class _SignupPageState extends State<SignupPage> {
       if (result.tokenType != null) {
         await prefs.setString('tokenType', result.tokenType!);
       }
+      await ProfileService.saveCachedProfileFromMap(result.user);
 
       if (!mounted) {
         return;

@@ -384,6 +384,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isLoggedIn', false);
+    await prefs.remove('authToken');
+    await prefs.remove('refreshToken');
+    await prefs.remove('tokenType');
+    await prefs.remove('userEmail');
+    await ProfileService.clearCachedProfile();
 
     if (!context.mounted) {
       return;

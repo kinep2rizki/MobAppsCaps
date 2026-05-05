@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:my_app/Services/AnalyticsService.dart';
+import 'package:my_app/Services/HomeService/FarmCycleService.dart';
 import 'package:my_app/Services/HomeService/PrediksiPanenService.dart';
 import 'package:my_app/pages/AnalyticsScreen.dart';
 import 'package:my_app/pages/ControlScreen.dart';
+import 'package:my_app/pages/HomeFeature/FarmCycle.dart';
 import 'package:my_app/pages/HomeFeature/prediksi_panen.dart';
 import 'package:my_app/pages/ProfileScreen.dart';
 import 'package:my_app/Services/HomeService/HomePage_api.dart';
@@ -21,6 +23,7 @@ class _HomePageState extends State<HomePage> {
   Map<String, dynamic>? _lastSensorData;
   Map<String, dynamic>? _lastPredictionData;
   Map<String, dynamic>? _lastHarvestEstimateData;
+  FarmCycle? _currentFarmCycle;
   Timer? _pollingTimer;
   Timer? _predictionPollingTimer;
   Timer? _harvestPollingTimer;
@@ -82,6 +85,7 @@ class _HomePageState extends State<HomePage> {
           _lastSensorData = latest;
         } else {
           setState(() {
+        _fetchInitialFarmCycleData();
             _lastSensorData = latest;
           });
         }
@@ -90,6 +94,29 @@ class _HomePageState extends State<HomePage> {
       return raw;
     } finally {
       _isFetching = false;
+    }
+  }
+
+  Future<void> _fetchInitialFarmCycleData() async {
+    try {
+      final currentCycle = await FarmCycleService.getLatestFarmCycle(
+        overrideBaseUrl: _overrideBaseUrl.isEmpty ? null : _overrideBaseUrl,
+      );
+
+      if (!mounted) {
+        _currentFarmCycle = currentCycle;
+        return;
+      }
+
+      setState(() {
+        _currentFarmCycle = currentCycle;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _currentFarmCycle = null;
+      });
     }
   }
 
@@ -271,6 +298,10 @@ class _HomePageState extends State<HomePage> {
       });
     }
 
+    if (mounted) {
+      _fetchInitialFarmCycleData();
+    }
+
     if (mounted && !_isFetchingHarvestEstimate) {
       _fetchInitialHarvestEstimateData();
     }
@@ -334,7 +365,9 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildStatusKolamCard(Map<String, dynamic>? sensorData,
+  Widget _buildStatusKolamCard(
+    BuildContext context,
+    Map<String, dynamic>? sensorData,
       {bool isLoading = false}) {
     final loading = isLoading && sensorData == null;
     final status = loading ? 'Memuat...' : _pondStatusFromSensor(sensorData);
@@ -342,86 +375,112 @@ class _HomePageState extends State<HomePage> {
     final statusBackground =
         loading ? Colors.grey.shade200 : _pondStatusBackground(status);
 
-    final hariBudidaya = sensorData == null
+    final cycleName = _currentFarmCycle?.cycleName ?? 'Farm Cycle belum dipilih';
+    final seedingDate = _currentFarmCycle?.seedingDate;
+    final seedingText = seedingDate == null ? '-' : _formatDateOnly(seedingDate);
+    final daysSinceSeeding = seedingDate == null
         ? null
-        : _extractNumericValue(sensorData, [
-            'hari_budidaya',
-            'budidaya_hari',
-            'culture_day',
-            'day_of_culture',
-          ]);
+        : DateTime.now()
+            .difference(DateTime(
+              seedingDate.year,
+              seedingDate.month,
+              seedingDate.day,
+            ))
+            .inDays;
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: _primary,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.waves, color: Colors.white, size: 28),
-              const SizedBox(width: 10),
-              const Text(
-                'Status Kolam',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const Spacer(),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: statusBackground,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Text(
-                  status,
+    return InkWell(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const FarmCyclePage(),
+          ),
+        );
+      },
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: _primary,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.waves, color: Colors.white, size: 28),
+                const SizedBox(width: 10),
+                const Text(
+                  'Status Kolam',
                   style: TextStyle(
-                    color: statusColor,
+                    color: Colors.white,
+                    fontSize: 20,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Hari Budidaya',
-                      style: TextStyle(color: Colors.white)),
-                  if (loading)
-                    const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.2,
-                        color: Colors.white,
-                      ),
-                    )
-                  else
-                    Text(
-                      _formatWholeNumber(hariBudidaya),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                      ),
+                const Spacer(),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: statusBackground,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    status,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontWeight: FontWeight.bold,
                     ),
-                ],
-              ),
-            ],
-          ),
-        ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 8),
+                      Text(
+                        cycleName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Mulai pembibitan: $seedingText',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Sudah ${daysSinceSeeding == null || daysSinceSeeding < 0 ? 0 : daysSinceSeeding} hari sejak budidaya',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  ),
+                const Icon(Icons.chevron_right, color: Colors.white70),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -588,6 +647,12 @@ class _HomePageState extends State<HomePage> {
     }
 
     return value.toStringAsFixed(0);
+  }
+
+  String _formatDateOnly(DateTime date) {
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    return '$day/$month/${date.year}';
   }
 
   String _formatDays(double? value) {
@@ -970,7 +1035,11 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               const SizedBox(height: 24),
-              _buildStatusKolamCard(sensorData, isLoading: isInitialLoading),
+              _buildStatusKolamCard(
+                context,
+                sensorData,
+                isLoading: isInitialLoading,
+              ),
               const SizedBox(height: 16),
               HarvestEstimateCard(
                 estimateData: _lastHarvestEstimateData,
