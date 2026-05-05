@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:my_app/Services/AnalyticsService.dart';
+import 'package:my_app/Services/HomeService/PrediksiPanenService.dart';
 import 'package:my_app/pages/AnalyticsScreen.dart';
 import 'package:my_app/pages/ControlScreen.dart';
+import 'package:my_app/pages/HomeFeature/prediksi_panen.dart';
 import 'package:my_app/pages/ProfileScreen.dart';
-import 'package:my_app/Services/HomePage_api.dart';
+import 'package:my_app/Services/HomeService/HomePage_api.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -18,11 +20,15 @@ class _HomePageState extends State<HomePage> {
   late Future<Map<String, dynamic>> futureData;
   Map<String, dynamic>? _lastSensorData;
   Map<String, dynamic>? _lastPredictionData;
+  Map<String, dynamic>? _lastHarvestEstimateData;
   Timer? _pollingTimer;
   Timer? _predictionPollingTimer;
+  Timer? _harvestPollingTimer;
   bool _isFetching = false;
   bool _isFetchingPrediction = false;
   bool _hasPredictionError = false;
+  bool _isFetchingHarvestEstimate = false;
+  bool _hasHarvestEstimateError = false;
 
   static const String _overrideBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
@@ -48,14 +54,17 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     futureData = _fetchInitialData();
     _fetchInitialPredictionData();
+    _fetchInitialHarvestEstimateData();
     _startPolling();
     _startPredictionPolling();
+    _startHarvestPolling();
   }
 
   @override
   void dispose() {
     _pollingTimer?.cancel();
     _predictionPollingTimer?.cancel();
+    _harvestPollingTimer?.cancel();
     super.dispose();
   }
 
@@ -119,6 +128,41 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _fetchInitialHarvestEstimateData() async {
+    _isFetchingHarvestEstimate = true;
+    try {
+      final result = await PrediksiPanenService.getLatestHarvestEstimate(
+        fallbackData: _lastSensorData,
+        overrideBaseUrl: _overrideBaseUrl.isEmpty ? null : _overrideBaseUrl,
+      );
+
+      final latest = result.latestEstimate;
+      final latestMap = latest?.toJson();
+
+      if (!mounted) {
+        _lastHarvestEstimateData = latestMap;
+        _hasHarvestEstimateError = !result.success;
+        return;
+      }
+
+      setState(() {
+        _lastHarvestEstimateData = latestMap;
+        _hasHarvestEstimateError = !result.success;
+      });
+    } catch (_) {
+      if (!mounted) {
+        _hasHarvestEstimateError = true;
+        return;
+      }
+
+      setState(() {
+        _hasHarvestEstimateError = true;
+      });
+    } finally {
+      _isFetchingHarvestEstimate = false;
+    }
+  }
+
   void _startPolling() {
     _pollingTimer?.cancel();
     _pollingTimer = Timer.periodic(const Duration(seconds: 10), (_) {
@@ -130,6 +174,13 @@ class _HomePageState extends State<HomePage> {
     _predictionPollingTimer?.cancel();
     _predictionPollingTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       _refreshPredictionSilently();
+    });
+  }
+
+  void _startHarvestPolling() {
+    _harvestPollingTimer?.cancel();
+    _harvestPollingTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      _refreshHarvestEstimateSilently();
     });
   }
 
@@ -183,11 +234,45 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _refreshHarvestEstimateSilently() async {
+    if (!mounted || _isFetchingHarvestEstimate) return;
+
+    _isFetchingHarvestEstimate = true;
+    try {
+      final result = await PrediksiPanenService.getLatestHarvestEstimate(
+        fallbackData: _lastSensorData,
+        overrideBaseUrl: _overrideBaseUrl.isEmpty ? null : _overrideBaseUrl,
+      );
+
+      final latest = result.latestEstimate;
+      final latestMap = latest?.toJson();
+
+      if (!mounted || latestMap == null) return;
+
+      setState(() {
+        _lastHarvestEstimateData = latestMap;
+        _hasHarvestEstimateError = false;
+      });
+    } catch (_) {
+      if (!mounted || _lastHarvestEstimateData != null) return;
+
+      setState(() {
+        _hasHarvestEstimateError = true;
+      });
+    } finally {
+      _isFetchingHarvestEstimate = false;
+    }
+  }
+
   void refreshData() {
     if (mounted && !_isFetching) {
       setState(() {
         futureData = _fetchInitialData();
       });
+    }
+
+    if (mounted && !_isFetchingHarvestEstimate) {
+      _fetchInitialHarvestEstimateData();
     }
 
     if (!_isFetchingPrediction) {
@@ -266,15 +351,6 @@ class _HomePageState extends State<HomePage> {
             'day_of_culture',
           ]);
 
-    final estimasiPanen = sensorData == null
-        ? null
-        : _extractNumericValue(sensorData, [
-            'estimasi_panen_hari',
-            'est_panen_hari',
-            'harvest_estimate_day',
-            'harvest_days_left',
-          ]);
-
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -335,31 +411,6 @@ class _HomePageState extends State<HomePage> {
                   else
                     Text(
                       _formatWholeNumber(hariBudidaya),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text('Est. Panen',
-                      style: TextStyle(color: Colors.white)),
-                  if (loading)
-                    const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.2,
-                        color: Colors.white,
-                      ),
-                    )
-                  else
-                    Text(
-                      _formatDays(estimasiPanen),
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 28,
@@ -920,6 +971,14 @@ class _HomePageState extends State<HomePage> {
               ),
               const SizedBox(height: 24),
               _buildStatusKolamCard(sensorData, isLoading: isInitialLoading),
+              const SizedBox(height: 16),
+              HarvestEstimateCard(
+                estimateData: _lastHarvestEstimateData,
+                isLoading: _isFetchingHarvestEstimate &&
+                    _lastHarvestEstimateData == null,
+                hasError: _hasHarvestEstimateError,
+                onRetry: refreshData,
+              ),
               const SizedBox(height: 16),
               if (hasInitialError)
                 _buildDataErrorCard()
