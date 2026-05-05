@@ -105,6 +105,80 @@ class ProfileService {
   static const String baseUrl = ApiService.baseUrl;
   static const Duration requestTimeout = Duration(seconds: 20);
 
+  static Future<ProfileResult> changePassword({
+    required String oldPassword,
+    required String newPassword,
+    http.Client? client,
+    String? overrideBaseUrl,
+    String? authToken,
+  }) async {
+    final resolvedToken = authToken ?? await _readStoredToken();
+    if (resolvedToken == null || resolvedToken.trim().isEmpty) {
+      return const ProfileResult(
+        success: false,
+        message: 'Token autentikasi tidak ditemukan. Silakan login ulang.',
+      );
+    }
+
+    final queryParameters = <String, String>{
+      'old_password': oldPassword.trim(),
+      'new_password': newPassword.trim(),
+    };
+
+    final httpClient = client ?? http.Client();
+    final shouldCloseClient = client == null;
+
+    try {
+      final response = await httpClient
+          .put(
+            Uri.parse(
+                    '${_resolveBaseUrl(overrideBaseUrl)}/users/change-password')
+                .replace(queryParameters: queryParameters),
+            headers: {
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $resolvedToken',
+            },
+          )
+          .timeout(requestTimeout);
+
+      final decodedBody = _decodeResponseBody(response.body);
+
+      if (response.statusCode != 200) {
+        debugPrint(
+          'ProfileService PUT /users/change-password failed with status ${response.statusCode}: '
+          '${response.body}',
+        );
+
+        return ProfileResult(
+          success: false,
+          message: _extractMessage(decodedBody) ??
+              'Gagal mengubah password (${response.statusCode})',
+        );
+      }
+
+      final responseMap = _extractMap(decodedBody);
+
+      return ProfileResult(
+        success: true,
+        message: _extractMessage(responseMap) ?? 'Password berhasil diubah',
+      );
+    } on TimeoutException {
+      return const ProfileResult(
+        success: false,
+        message: 'Request timeout. Server terlalu lama merespons, coba lagi.',
+      );
+    } catch (error) {
+      return ProfileResult(
+        success: false,
+        message: 'Tidak dapat mengubah password: $error',
+      );
+    } finally {
+      if (shouldCloseClient) {
+        httpClient.close();
+      }
+    }
+  }
+
   static Future<ProfileResult> uploadProfilePhoto({
     required File photoFile,
     http.Client? client,
