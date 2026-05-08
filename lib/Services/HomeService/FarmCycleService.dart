@@ -1,11 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-
 import 'package:my_app/Services/api_service.dart';
+import 'package:my_app/Services/ProfileService.dart';
 
 class FarmCycle {
   final int? id;
@@ -84,6 +83,29 @@ class FarmCycle {
     }
     return null;
   }
+
+  int? get daysSinceSeeding {
+    final seeding = seedingDate;
+    if (seeding == null) {
+      return null;
+    }
+
+    final today = DateTime.now();
+    final startOfToday = DateTime(today.year, today.month, today.day);
+    final startOfSeeding = DateTime(seeding.year, seeding.month, seeding.day);
+
+    final difference = startOfToday.difference(startOfSeeding).inDays;
+    return difference < 0 ? 0 : difference;
+  }
+
+  String get daysSinceSeedingText {
+    final days = daysSinceSeeding;
+    if (days == null) {
+      return '-';
+    }
+
+    return 'Sudah $days hari sejak pembibitan';
+  }
 }
 
 class FarmCycleResult {
@@ -101,7 +123,7 @@ class FarmCycleResult {
 class FarmCycleService {
   static const String baseUrl = ApiService.baseUrl;
   static const Duration requestTimeout = Duration(seconds: 20);
-  
+
   static Future<FarmCycle?> getLatestFarmCycle({
     http.Client? client,
     String? overrideBaseUrl,
@@ -137,28 +159,44 @@ class FarmCycleService {
   }) async {
     final resolvedToken = authToken ?? await _readStoredToken();
     if (resolvedToken == null || resolvedToken.trim().isEmpty) {
+      debugPrint('[FarmCycleService] Missing auth token for GET /farming-cycle/');
       throw Exception('Token autentikasi tidak ditemukan. Silakan login ulang.');
     }
 
     final httpClient = client ?? http.Client();
     final shouldCloseClient = client == null;
+    final resolvedBaseUrl = _resolveBaseUrl(overrideBaseUrl);
+
+    debugPrint(
+      '[FarmCycleService] GET $resolvedBaseUrl/farming-cycle/ '
+      '(token length: ${resolvedToken.trim().length})',
+    );
 
     try {
       final response = await httpClient.get(
-        Uri.parse('${_resolveBaseUrl(overrideBaseUrl)}/farming-cycle/'),
+        Uri.parse('$resolvedBaseUrl/farming-cycle/'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $resolvedToken',
         },
       ).timeout(requestTimeout);
 
+      debugPrint(
+        '[FarmCycleService] GET /farming-cycle/ status: ${response.statusCode}',
+      );
+
       final decodedBody = _decodeResponseBody(response.body);
 
-      if (response.statusCode != 200) {
-        debugPrint(
-          'FarmCycleService GET /farming-cycle/ failed with status ${response.statusCode}: '
-          '${response.body}',
+      if (response.statusCode == 401) {
+        await _clearInvalidSession();
+        throw Exception(
+          _extractMessage(decodedBody) ??
+              'Token tidak valid atau sudah expired. Silakan login ulang.',
         );
+      }
+
+      if (response.statusCode != 200) {
+        _logFailure('GET /farming-cycle/', response.statusCode, response.body);
 
         throw Exception(_extractMessage(decodedBody) ??
             'Gagal mengambil farming cycle (${response.statusCode})');
@@ -183,6 +221,7 @@ class FarmCycleService {
   }) async {
     final resolvedToken = authToken ?? await _readStoredToken();
     if (resolvedToken == null || resolvedToken.trim().isEmpty) {
+      debugPrint('[FarmCycleService] Missing auth token for POST /farming-cycle/');
       return const FarmCycleResult(
         success: false,
         message: 'Token autentikasi tidak ditemukan. Silakan login ulang.',
@@ -196,10 +235,16 @@ class FarmCycleService {
 
     final httpClient = client ?? http.Client();
     final shouldCloseClient = client == null;
+    final resolvedBaseUrl = _resolveBaseUrl(overrideBaseUrl);
+
+    debugPrint(
+      '[FarmCycleService] POST $resolvedBaseUrl/farming-cycle/ '
+      '(token length: ${resolvedToken.trim().length})',
+    );
 
     try {
       final response = await httpClient.post(
-        Uri.parse('${_resolveBaseUrl(overrideBaseUrl)}/farming-cycle/'),
+        Uri.parse('$resolvedBaseUrl/farming-cycle/'),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -208,13 +253,23 @@ class FarmCycleService {
         body: jsonEncode(payload),
       ).timeout(requestTimeout);
 
+      debugPrint(
+        '[FarmCycleService] POST /farming-cycle/ status: ${response.statusCode}',
+      );
+
       final decodedBody = _decodeResponseBody(response.body);
 
-      if (response.statusCode != 200 && response.statusCode != 201) {
-        debugPrint(
-          'FarmCycleService POST /farming-cycle/ failed with status ${response.statusCode}: '
-          '${response.body}',
+      if (response.statusCode == 401) {
+        await _clearInvalidSession();
+        return FarmCycleResult(
+          success: false,
+          message: _extractMessage(decodedBody) ??
+              'Token tidak valid atau sudah expired. Silakan login ulang.',
         );
+      }
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        _logFailure('POST /farming-cycle/', response.statusCode, response.body);
 
         return FarmCycleResult(
           success: false,
@@ -261,6 +316,7 @@ class FarmCycleService {
   }) async {
     final resolvedToken = authToken ?? await _readStoredToken();
     if (resolvedToken == null || resolvedToken.trim().isEmpty) {
+      debugPrint('[FarmCycleService] Missing auth token for PUT /farming-cycle/$cycleId');
       return const FarmCycleResult(
         success: false,
         message: 'Token autentikasi tidak ditemukan. Silakan login ulang.',
@@ -287,10 +343,16 @@ class FarmCycleService {
 
     final httpClient = client ?? http.Client();
     final shouldCloseClient = client == null;
+    final resolvedBaseUrl = _resolveBaseUrl(overrideBaseUrl);
+
+    debugPrint(
+      '[FarmCycleService] PUT $resolvedBaseUrl/farming-cycle/$cycleId '
+      '(token length: ${resolvedToken.trim().length})',
+    );
 
     try {
       final response = await httpClient.put(
-        Uri.parse('${_resolveBaseUrl(overrideBaseUrl)}/farming-cycle/$cycleId'),
+        Uri.parse('$resolvedBaseUrl/farming-cycle/$cycleId'),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -299,13 +361,23 @@ class FarmCycleService {
         body: jsonEncode(payload),
       ).timeout(requestTimeout);
 
+      debugPrint(
+        '[FarmCycleService] PUT /farming-cycle/$cycleId status: ${response.statusCode}',
+      );
+
       final decodedBody = _decodeResponseBody(response.body);
 
-      if (response.statusCode != 200 && response.statusCode != 201) {
-        debugPrint(
-          'FarmCycleService PUT /farming-cycle/$cycleId failed with status ${response.statusCode}: '
-          '${response.body}',
+      if (response.statusCode == 401) {
+        await _clearInvalidSession();
+        return FarmCycleResult(
+          success: false,
+          message: _extractMessage(decodedBody) ??
+              'Token tidak valid atau sudah expired. Silakan login ulang.',
         );
+      }
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        _logFailure('PUT /farming-cycle/$cycleId', response.statusCode, response.body);
 
         return FarmCycleResult(
           success: false,
@@ -437,6 +509,17 @@ class FarmCycleService {
     return ApiService.resolveBaseUrl(overrideBaseUrl);
   }
 
+  static void _logFailure(String action, int statusCode, String responseBody) {
+    final trimmedBody = responseBody.trim();
+    final bodyPreview = trimmedBody.length > 500
+        ? '${trimmedBody.substring(0, 500)}...'
+        : trimmedBody;
+
+    debugPrint(
+      '[FarmCycleService] $action failed with status $statusCode: $bodyPreview',
+    );
+  }
+
   static Future<String?> _readStoredToken() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('authToken');
@@ -450,5 +533,16 @@ class FarmCycleService {
     }
 
     return null;
+  }
+
+  static Future<void> _clearInvalidSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isLoggedIn', false);
+    await prefs.remove('authToken');
+    await prefs.remove('refreshToken');
+    await prefs.remove('tokenType');
+    await prefs.remove('userEmail');
+    await ProfileService.clearCachedProfile();
+    debugPrint('[FarmCycleService] Cleared invalid auth session after 401');
   }
 }

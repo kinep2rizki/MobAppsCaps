@@ -188,6 +188,61 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _generateHarvestEstimate() async {
+    final farmingCycleId = _currentFarmCycle?.id ??
+        await PrediksiPanenService.resolveFarmingCycleId(
+          fallbackData: _lastSensorData,
+        );
+
+    if (farmingCycleId == null) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Farm cycle belum dipilih.'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (!mounted || _isFetchingHarvestEstimate) return;
+
+    setState(() {
+      _isFetchingHarvestEstimate = true;
+      _hasHarvestEstimateError = false;
+    });
+
+    try {
+      final result = await PrediksiPanenService.generateHarvestEstimate(
+        farmingCycleId: farmingCycleId,
+      );
+
+      if (!mounted) return;
+
+      final latest = result.latestEstimate;
+      setState(() {
+        _lastHarvestEstimateData = latest?.toJson();
+        _hasHarvestEstimateError = !result.success;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.message),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: result.success ? _success : Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isFetchingHarvestEstimate = false;
+        });
+      }
+    }
+  }
+
   void _startPolling() {
     _pollingTimer?.cancel();
     _pollingTimer = Timer.periodic(const Duration(seconds: 10), (_) {
@@ -1045,6 +1100,7 @@ class _HomePageState extends State<HomePage> {
                     _lastHarvestEstimateData == null,
                 hasError: _hasHarvestEstimateError,
                 onRetry: refreshData,
+                onGenerate: _generateHarvestEstimate,
               ),
               const SizedBox(height: 16),
               if (hasInitialError)

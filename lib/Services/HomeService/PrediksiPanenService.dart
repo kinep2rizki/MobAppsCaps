@@ -122,8 +122,42 @@ class PrediksiPanenService {
 	static const String baseUrl = ApiService.baseUrl;
 	static const Duration requestTimeout = Duration(seconds: 20);
 
+	static Future<PrediksiPanenResult> generateHarvestEstimate({
+		required int farmingCycleId,
+		Map<String, dynamic>? payload,
+		http.Client? client,
+		String? overrideBaseUrl,
+		String? authToken,
+	}) async {
+		return _sendHarvestEstimateRequest(
+			method: 'POST',
+			farmingCycleId: farmingCycleId,
+			payload: payload,
+			client: client,
+			overrideBaseUrl: overrideBaseUrl,
+			authToken: authToken,
+		);
+	}
+
 	static Future<PrediksiPanenResult> getHarvestEstimates({
 		required int farmingCycleId,
+		http.Client? client,
+		String? overrideBaseUrl,
+		String? authToken,
+	}) async {
+		return _sendHarvestEstimateRequest(
+			method: 'GET',
+			farmingCycleId: farmingCycleId,
+			client: client,
+			overrideBaseUrl: overrideBaseUrl,
+			authToken: authToken,
+		);
+	}
+
+	static Future<PrediksiPanenResult> _sendHarvestEstimateRequest({
+		required String method,
+		required int farmingCycleId,
+		Map<String, dynamic>? payload,
 		http.Client? client,
 		String? overrideBaseUrl,
 		String? authToken,
@@ -139,30 +173,53 @@ class PrediksiPanenService {
 
 		final httpClient = client ?? http.Client();
 		final shouldCloseClient = client == null;
+		final resolvedBaseUrl = _resolveBaseUrl(overrideBaseUrl);
+		final uri = Uri.parse('$resolvedBaseUrl/ml/harvest-estimate/$farmingCycleId');
+		final normalizedMethod = method.toUpperCase();
+		final hasPayload = payload != null && payload.isNotEmpty;
+
+		debugPrint(
+			'[PrediksiPanenService] $normalizedMethod ${uri.toString()} '
+			'(token length: ${resolvedToken.trim().length})',
+		);
 
 		try {
-			final response = await httpClient.get(
-				Uri.parse(
-					'${_resolveBaseUrl(overrideBaseUrl)}/ml/harvest-estimate/$farmingCycleId',
-				),
-				headers: {
-					'Accept': 'application/json',
-					'Authorization': 'Bearer $resolvedToken',
-				},
-			).timeout(requestTimeout);
+			final response = await (normalizedMethod == 'POST'
+					? httpClient.post(
+						uri,
+						headers: {
+							'Accept': 'application/json',
+							'Content-Type': 'application/json',
+							'Authorization': 'Bearer $resolvedToken',
+						},
+						body: hasPayload ? jsonEncode(payload) : null,
+					)
+					: httpClient.get(
+						uri,
+						headers: {
+							'Accept': 'application/json',
+							'Authorization': 'Bearer $resolvedToken',
+						},
+					))
+				.timeout(requestTimeout);
+
+			debugPrint(
+				'[PrediksiPanenService] $normalizedMethod /ml/harvest-estimate/$farmingCycleId status: ${response.statusCode}',
+			);
 
 			final decodedBody = _decodeResponseBody(response.body);
 
-			if (response.statusCode != 200) {
+			if (response.statusCode != 200 && response.statusCode != 201) {
 				debugPrint(
-					'PrediksiPanenService GET /ml/harvest-estimate/$farmingCycleId failed with status ${response.statusCode}: '
-					'${response.body}',
+					'[PrediksiPanenService] $normalizedMethod /ml/harvest-estimate/$farmingCycleId failed with status ${response.statusCode}: ${response.body}',
 				);
 
 				return PrediksiPanenResult(
 					success: false,
 					message: _extractMessage(decodedBody) ??
-							'Gagal mengambil prediksi panen (${response.statusCode})',
+							(normalizedMethod == 'POST'
+								? 'Gagal membuat prediksi panen (${response.statusCode})'
+								: 'Gagal mengambil prediksi panen (${response.statusCode})'),
 					estimates: const [],
 				);
 			}
@@ -178,7 +235,10 @@ class PrediksiPanenService {
 
 			return PrediksiPanenResult(
 				success: true,
-				message: _extractMessage(decodedBody) ?? 'Prediksi panen berhasil dimuat',
+				message: _extractMessage(decodedBody) ??
+					(normalizedMethod == 'POST'
+						? 'Prediksi panen berhasil dibuat'
+						: 'Prediksi panen berhasil dimuat'),
 				estimates: estimates,
 			);
 		} on TimeoutException {
@@ -190,7 +250,9 @@ class PrediksiPanenService {
 		} catch (error) {
 			return PrediksiPanenResult(
 				success: false,
-				message: 'Tidak dapat mengambil prediksi panen: $error',
+				message: normalizedMethod == 'POST'
+					? 'Tidak dapat membuat prediksi panen: $error'
+					: 'Tidak dapat mengambil prediksi panen: $error',
 				estimates: const [],
 			);
 		} finally {

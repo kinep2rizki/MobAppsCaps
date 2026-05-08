@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:my_app/Services/HomeService/FarmCycleService.dart';
 
@@ -28,20 +30,40 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
   List<FarmCycle> _cycles = const [];
   DateTime? _selectedSeedingDate;
   int? _editingCycleId;
+  Timer? _dayRefreshTimer;
 
   @override
   void initState() {
     super.initState();
     _cycleNameController = TextEditingController();
     _seedingDateController = TextEditingController();
+    _scheduleDayRefresh();
     _loadCycles();
   }
 
   @override
   void dispose() {
+    _dayRefreshTimer?.cancel();
     _cycleNameController.dispose();
     _seedingDateController.dispose();
     super.dispose();
+  }
+
+  void _scheduleDayRefresh() {
+    _dayRefreshTimer?.cancel();
+
+    final now = DateTime.now();
+    final nextMidnight = DateTime(now.year, now.month, now.day + 1);
+    final delay = nextMidnight.difference(now);
+
+    _dayRefreshTimer = Timer(delay, () {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {});
+      _scheduleDayRefresh();
+    });
   }
 
   @override
@@ -267,6 +289,8 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
   }
 
   Widget _buildCycleTile(FarmCycle cycle) {
+    final daysSinceSeeding = cycle.daysSinceSeeding;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
@@ -300,6 +324,13 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
           const SizedBox(height: 4),
           Text('Seeding: ${_formatDate(cycle.seedingDate)}'),
           Text('Est. Harvest: ${_formatDate(cycle.estimatedHarvestDate)}'),
+          Text(
+            cycle.daysSinceSeedingText,
+            style: TextStyle(
+              color: daysSinceSeeding == null ? _textSecondary : _primary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           Text('Status: ${cycle.status ?? '-'}'),
         ],
       ),
@@ -399,6 +430,7 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
     if (result.success) {
       _cancelEdit();
       await _loadCycles();
+      if (!mounted) return;
     }
 
     ScaffoldMessenger.of(context).showSnackBar(

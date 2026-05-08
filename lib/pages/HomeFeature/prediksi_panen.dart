@@ -7,12 +7,14 @@ class HarvestEstimateCard extends StatelessWidget {
 		this.isLoading = false,
 		this.hasError = false,
 		this.onRetry,
+		this.onGenerate,
 	});
 
 	final Map<String, dynamic>? estimateData;
 	final bool isLoading;
 	final bool hasError;
 	final VoidCallback? onRetry;
+	final VoidCallback? onGenerate;
 
 	String _formatLongDate(DateTime? date) {
 		if (date == null) return '-';
@@ -180,6 +182,21 @@ class HarvestEstimateCard extends StatelessWidget {
 							Text(
 								'Farming cycle: $farmingCycleId',
 								style: const TextStyle(color: Colors.white70),
+							),
+						],
+						if (onGenerate != null) ...[
+							const SizedBox(height: 12),
+							SizedBox(
+								width: double.infinity,
+								child: OutlinedButton.icon(
+									onPressed: onGenerate,
+									style: OutlinedButton.styleFrom(
+										foregroundColor: Colors.white,
+										side: const BorderSide(color: Colors.white70),
+									),
+									icon: const Icon(Icons.auto_graph_outlined),
+									label: const Text('Generate Prediksi Panen'),
+								),
 							),
 						],
 					],
