@@ -2,17 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'api_service.dart';
 
 class ControlService {
-  static const String baseUrl =
-      'https://haematological-jovan-bloomless.ngrok-free.dev';
+  static const String baseUrl = ApiService.baseUrl;
 
   static String _resolveBaseUrl(String? overrideBaseUrl) {
-    final value = overrideBaseUrl?.trim();
-    if (value == null || value.isEmpty || value.toLowerCase() == 'null') {
-      return baseUrl;
-    }
-    return value.endsWith('/') ? value.substring(0, value.length - 1) : value;
+    return ApiService.resolveBaseUrl(overrideBaseUrl);
   }
 
   static String normalizeMode(String? value) {

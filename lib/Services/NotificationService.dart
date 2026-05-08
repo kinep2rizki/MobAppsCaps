@@ -7,6 +7,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
+import 'api_service.dart';
 
 const String notificationBackgroundTaskName =
     'bluvera.notifications.background.sync';
@@ -26,15 +27,10 @@ void notificationBackgroundDispatcher() {
 }
 
 class NotificationApiService {
-  static const String baseUrl =
-      'https://haematological-jovan-bloomless.ngrok-free.dev';
+  static const String baseUrl = ApiService.baseUrl;
 
   static String _resolveBaseUrl(String? overrideBaseUrl) {
-    final value = overrideBaseUrl?.trim();
-    if (value == null || value.isEmpty || value.toLowerCase() == 'null') {
-      return baseUrl;
-    }
-    return value.endsWith('/') ? value.substring(0, value.length - 1) : value;
+    return ApiService.resolveBaseUrl(overrideBaseUrl);
   }
 
   static Future<List<AppNotificationItem>> getUnreadNotifications({

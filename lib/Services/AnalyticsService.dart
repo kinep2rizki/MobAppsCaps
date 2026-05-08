@@ -1,18 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'api_service.dart';
 
 class AnalyticsService {
-  static const String baseUrl =
-      'https://haematological-jovan-bloomless.ngrok-free.dev';
-
-  static String _resolveBaseUrl(String? overrideBaseUrl) {
-    final value = overrideBaseUrl?.trim();
-    if (value == null || value.isEmpty || value.toLowerCase() == 'null') {
-      return baseUrl;
-    }
-    return value.endsWith('/') ? value.substring(0, value.length - 1) : value;
-  }
+  static const String baseUrl = ApiService.baseUrl;
 
   static Future<Map<String, dynamic>> getLatestPrediction({
     http.Client? client,
@@ -21,7 +13,7 @@ class AnalyticsService {
   }) async {
     final httpClient = client ?? http.Client();
     final shouldCloseClient = client == null;
-    final resolvedBaseUrl = _resolveBaseUrl(overrideBaseUrl);
+    final resolvedBaseUrl = ApiService.resolveBaseUrl(overrideBaseUrl);
 
     try {
       final response = await httpClient.get(

@@ -1,17 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:my_app/Services/api_service.dart';
 
 class HomePageApi {
-  static const String baseUrl =
-      'https://haematological-jovan-bloomless.ngrok-free.dev';
+  static const String baseUrl = ApiService.baseUrl;
 
   static String _resolveBaseUrl(String? overrideBaseUrl) {
-    final value = overrideBaseUrl?.trim();
-    if (value == null || value.isEmpty || value.toLowerCase() == 'null') {
-      return baseUrl;
-    }
-    return value.endsWith('/') ? value.substring(0, value.length - 1) : value;
+    return ApiService.resolveBaseUrl(overrideBaseUrl);
   }
 
   static Future<Map<String, dynamic>> getLatestSensorData({

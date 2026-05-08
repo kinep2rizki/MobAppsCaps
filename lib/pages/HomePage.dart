@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:my_app/Services/AnalyticsService.dart';
 import 'package:my_app/Services/HomeService/FarmCycleService.dart';
 import 'package:my_app/Services/HomeService/PrediksiPanenService.dart';
+import 'package:my_app/Services/api_service.dart';
 import 'package:my_app/pages/AnalyticsScreen.dart';
 import 'package:my_app/pages/ControlScreen.dart';
 import 'package:my_app/pages/HomeFeature/FarmCycle.dart';
@@ -33,10 +34,7 @@ class _HomePageState extends State<HomePage> {
   bool _isFetchingHarvestEstimate = false;
   bool _hasHarvestEstimateError = false;
 
-  static const String _overrideBaseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: '',
-  );
+  static const String _overrideBaseUrl = ApiService.baseUrl;
 
   static const Color _primary = Color(0xFF2563EB);
   static const Color _background = Color(0xFFF9FAFB);

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:my_app/Services/NotifAlertService.dart';
+import 'package:my_app/Services/api_service.dart';
 import 'package:my_app/pages/ProfilePages/PopupNotif.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -32,10 +33,7 @@ class _AlertDanNotifikasiPageState extends State<AlertDanNotifikasiPage> {
   static const Color _alertDescriptionText = Color(0xFF4B5563);
   static const Color _alertMetaText = Color(0xFF6B7280);
 
-  static const String _overrideBaseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: '',
-  );
+  static const String _overrideBaseUrl = ApiService.baseUrl;
   static const int _maxAlertItems = 50;
 
   // ── Toggle states ──

@@ -480,12 +480,7 @@ class ProfileService {
   }
 
   static String _resolveBaseUrl(String? overrideBaseUrl) {
-    final value = overrideBaseUrl?.trim();
-    if (value == null || value.isEmpty || value.toLowerCase() == 'null') {
-      return baseUrl;
-    }
-
-    return value.endsWith('/') ? value.substring(0, value.length - 1) : value;
+    return ApiService.resolveBaseUrl(overrideBaseUrl);
   }
 
   static Object? _decodeResponseBody(String body) {

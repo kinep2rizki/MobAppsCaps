@@ -88,8 +88,9 @@ class AuthService {
     final shouldCloseClient = client == null;
 
     try {
+      final resolvedBaseUrl = ApiService.resolveBaseUrl(overrideBaseUrl);
       final response = await httpClient.post(
-        Uri.parse('${overrideBaseUrl ?? baseUrl}$path'),
+        Uri.parse('$resolvedBaseUrl$path'),
         headers: const {
           'Content-Type': 'application/json',
           'Accept': 'application/json',

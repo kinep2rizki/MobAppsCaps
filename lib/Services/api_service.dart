@@ -2,7 +2,21 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String baseUrl = 'https://haematological-jovan-bloomless.ngrok-free.dev';
+  static const String defaultBaseUrl =
+      'https://backend-nila-iot-production.up.railway.app';
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: defaultBaseUrl,
+  );
+
+  static String resolveBaseUrl(String? overrideBaseUrl) {
+    final value = overrideBaseUrl?.trim();
+    if (value == null || value.isEmpty || value.toLowerCase() == 'null') {
+      return baseUrl;
+    }
+
+    return value.endsWith('/') ? value.substring(0, value.length - 1) : value;
+  }
 
   static Future<List<dynamic>> getSensorData({
     http.Client? client,
@@ -12,8 +26,9 @@ class ApiService {
     final shouldCloseClient = client == null;
 
     try {
+      final resolvedBaseUrl = resolveBaseUrl(overrideBaseUrl);
       final response = await httpClient.get(
-        Uri.parse('${overrideBaseUrl ?? baseUrl}/sensor-data/history'),
+        Uri.parse('$resolvedBaseUrl/sensor-data/history'),
       );
 
       if (response.statusCode != 200) {
