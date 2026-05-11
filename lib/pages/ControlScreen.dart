@@ -1,8 +1,10 @@
 // ignore_for_file: file_names
 import 'package:flutter/material.dart';
 import 'package:my_app/Services/ControlService.dart';
+import 'package:my_app/pages/ControlFiture/FeedHistory.dart';
 import 'package:my_app/Services/StockPakanService.dart';
 import 'package:my_app/pages/ControlFiture/ControlActuator.dart';
+import 'package:my_app/pages/ControlFiture/JadwalPakan.dart';
 import 'package:my_app/pages/ControlFiture/StockPakan.dart';
 
 class ControlScreen extends StatefulWidget {
@@ -35,18 +37,10 @@ class _ControlScreenState extends State<ControlScreen> {
   String? _stockPakanError;
   String? _stockStatsError;
   String? _stockHistoryError;
-  late final List<bool> _scheduleEnabled;
-
-  final List<_SchedulePlan> _schedules = const [
-    _SchedulePlan(time: '07:00', amount: '3.0 Kg'),
-    _SchedulePlan(time: '13:00', amount: '3.0 Kg'),
-    _SchedulePlan(time: '19:00', amount: '3.0 Kg'),
-  ];
 
   @override
   void initState() {
     super.initState();
-    _scheduleEnabled = List<bool>.filled(_schedules.length, true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _refreshActuatorStatus();
@@ -245,6 +239,8 @@ class _ControlScreenState extends State<ControlScreen> {
               _buildModeCard(),
               const SizedBox(height: 16),
               _buildScheduleCard(),
+              const SizedBox(height: 16),
+              _buildFeedHistoryCard(),
               const SizedBox(height: 16),
               _buildStockCard(),
             ],
@@ -655,121 +651,11 @@ class _ControlScreenState extends State<ControlScreen> {
   }
 
   Widget _buildScheduleCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: _surface,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: _borderColor),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Jadwal Pemberian Pakan',
-            style: TextStyle(
-              color: _textPrimary,
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Atur jadwal pakan otomatis harian',
-            style: TextStyle(color: _textSecondary, fontSize: 13),
-          ),
-          const SizedBox(height: 18),
-          ...List.generate(_schedules.length, (index) {
-            final schedule = _schedules[index];
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: index == _schedules.length - 1 ? 16 : 12,
-              ),
-              child: _buildScheduleTile(schedule, index),
-            );
-          }),
-          _buildAddScheduleButton(),
-        ],
-      ),
-    );
+    return const JadwalPakanCard();
   }
 
-  Widget _buildScheduleTile(_SchedulePlan schedule, int index) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: _surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _borderColor),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFEFF6FF),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(Icons.schedule, color: _primary),
-          ),
-          const SizedBox(width: 14),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                schedule.time,
-                style: const TextStyle(
-                  color: _textPrimary,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                schedule.amount,
-                style: const TextStyle(color: _textSecondary, fontSize: 13),
-              ),
-            ],
-          ),
-          const Spacer(),
-          Switch(
-            value: _scheduleEnabled[index],
-            onChanged: (value) =>
-                setState(() => _scheduleEnabled[index] = value),
-            activeColor: Colors.white,
-            activeTrackColor: _primary,
-            inactiveThumbColor: Colors.white,
-            inactiveTrackColor: _borderColor,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAddScheduleButton() {
-    return GestureDetector(
-      onTap: () {},
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: const Color(0xFFEFF4FF),
-          borderRadius: BorderRadius.circular(18),
-        ),
-        alignment: Alignment.center,
-        child: const Text(
-          '+ Tambah Jadwal',
-          style: TextStyle(color: _primary, fontWeight: FontWeight.w600),
-        ),
-      ),
-    );
+  Widget _buildFeedHistoryCard() {
+    return const FeedHistoryCard();
   }
 
   Widget _buildStockCard() {
@@ -786,11 +672,4 @@ class _ControlScreenState extends State<ControlScreen> {
       onRefresh: _refreshStockPakan,
     );
   }
-}
-
-class _SchedulePlan {
-  final String time;
-  final String amount;
-
-  const _SchedulePlan({required this.time, required this.amount});
 }
