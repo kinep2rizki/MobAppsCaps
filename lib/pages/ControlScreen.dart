@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:my_app/Services/ControlService.dart';
 import 'package:my_app/pages/ControlFiture/FeedHistory.dart';
-import 'package:my_app/Services/StockPakanService.dart';
+import 'package:my_app/Services/ControlService/StockPakanService.dart';
 import 'package:my_app/pages/ControlFiture/ControlActuator.dart';
 import 'package:my_app/pages/ControlFiture/JadwalPakan.dart';
 import 'package:my_app/pages/ControlFiture/StockPakan.dart';

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:my_app/Services/StockPakanService.dart';
+import 'package:my_app/Services/ControlService/StockPakanService.dart';
 
 class StockPakanCard extends StatelessWidget {
   const StockPakanCard({

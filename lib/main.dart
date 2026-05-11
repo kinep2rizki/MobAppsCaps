@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:my_app/Services/NotificationService.dart';
+import 'package:my_app/Services/NotifService/NotificationService.dart';
 import 'package:my_app/pages/HomePage.dart';
 import 'package:my_app/pages/ProfilePages/PopupNotif.dart';
 import 'package:my_app/pages/login_page.dart';

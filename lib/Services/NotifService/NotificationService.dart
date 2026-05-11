@@ -7,7 +7,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
-import 'api_service.dart';
+import '../api_service.dart';
 
 const String notificationBackgroundTaskName =
     'bluvera.notifications.background.sync';

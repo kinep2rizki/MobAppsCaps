@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:my_app/Services/ProfileService.dart';
-import 'package:my_app/Services/NotificationService.dart';
+import 'package:my_app/Services/NotifService/NotificationService.dart';
 import 'package:my_app/pages/ProfilePages/AlertDanNotifikasi.dart';
 import 'package:my_app/pages/ProfilePages/RiwayatData.dart';
 import 'package:my_app/pages/ProfilePages/KalibrasiSensor.dart';

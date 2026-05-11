@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:my_app/Services/FeedHistoryService.dart';
+import 'package:my_app/Services/ControlService/FeedHistoryService.dart';
 
 class FeedHistoryCard extends StatefulWidget {
   const FeedHistoryCard({super.key});

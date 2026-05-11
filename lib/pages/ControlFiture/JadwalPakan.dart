@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:my_app/Services/JadwalPakanService.dart';
+import 'package:my_app/Services/ControlService/JadwalPakanService.dart';
 
 class JadwalPakanCard extends StatefulWidget {
 	const JadwalPakanCard({super.key});

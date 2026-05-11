@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'api_service.dart';
+import '../api_service.dart';
 
 class NotifAlertService {
   static const String baseUrl = ApiService.baseUrl;

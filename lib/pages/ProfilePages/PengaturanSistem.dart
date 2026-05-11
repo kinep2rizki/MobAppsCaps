@@ -1,7 +1,7 @@
 // ignore_for_file: file_names
 
 import 'package:flutter/material.dart';
-import 'package:my_app/Services/NotificationService.dart';
+import 'package:my_app/Services/NotifService/NotificationService.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class PengaturanSistemPage extends StatefulWidget {

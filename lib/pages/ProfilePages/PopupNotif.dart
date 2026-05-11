@@ -1,7 +1,7 @@
 // ignore_for_file: file_names
 
 import 'package:flutter/material.dart';
-import 'package:my_app/Services/NotificationService.dart';
+import 'package:my_app/Services/NotifService/NotificationService.dart';
 
 class PopupNotifPage extends StatefulWidget {
   const PopupNotifPage({super.key});

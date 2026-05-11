@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:my_app/Services/NotifAlertService.dart';
+import 'package:my_app/Services/NotifService/NotifAlertService.dart';
 import 'package:my_app/Services/api_service.dart';
 import 'package:my_app/pages/ProfilePages/PopupNotif.dart';
 import 'package:shared_preferences/shared_preferences.dart';
