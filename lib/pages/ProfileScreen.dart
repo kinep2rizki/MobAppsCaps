@@ -388,6 +388,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await prefs.remove('refreshToken');
     await prefs.remove('tokenType');
     await prefs.remove('userEmail');
+    await prefs.remove('farming_cycle_id');
+    await prefs.remove('farmingCycleId');
+    await prefs.remove('selected_farming_cycle_id');
+    await prefs.remove('selectedFarmingCycleId');
+    await prefs.remove('active_farming_cycle_id');
+    await prefs.remove('activeFarmingCycleId');
+    await prefs.remove('cycle_id');
+    await prefs.remove('cycleId');
     await ProfileService.clearCachedProfile();
 
     if (!context.mounted) {

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:my_app/Services/HomeService/FarmCycleService.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class FarmCyclePage extends StatefulWidget {
   const FarmCyclePage({super.key});
@@ -18,6 +19,18 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
   static const Color _textPrimary = Color(0xFF1F2937);
   static const Color _textSecondary = Color(0xFF6B7280);
   static const Color _success = Color(0xFF10B981);
+  static const Color _warning = Color(0xFFF59E0B);
+
+  static const List<String> _cycleIdKeys = [
+    'farming_cycle_id',
+    'farmingCycleId',
+    'selected_farming_cycle_id',
+    'selectedFarmingCycleId',
+    'active_farming_cycle_id',
+    'activeFarmingCycleId',
+    'cycle_id',
+    'cycleId',
+  ];
 
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _cycleNameController;
@@ -30,6 +43,8 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
   List<FarmCycle> _cycles = const [];
   DateTime? _selectedSeedingDate;
   int? _editingCycleId;
+  int? _selectedCycleId;
+  String? _selectedCycleName;
   Timer? _dayRefreshTimer;
 
   @override
@@ -39,6 +54,7 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
     _seedingDateController = TextEditingController();
     _scheduleDayRefresh();
     _loadCycles();
+    _loadSelectedCycle();
   }
 
   @override
@@ -89,6 +105,8 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
                 'Buat dan kelola farming cycle saat pembibitan dimulai.',
                 style: TextStyle(color: _textSecondary, fontSize: 14),
               ),
+              const SizedBox(height: 16),
+              _buildSelectedCycleBanner(),
               const SizedBox(height: 16),
               _buildFormCard(),
               const SizedBox(height: 16),
@@ -290,6 +308,7 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
 
   Widget _buildCycleTile(FarmCycle cycle) {
     final daysSinceSeeding = cycle.daysSinceSeeding;
+    final bool isSelected = cycle.id != null && cycle.id == _selectedCycleId;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -297,6 +316,10 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
       decoration: BoxDecoration(
         color: _background,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isSelected ? _success : Colors.transparent,
+          width: 1.2,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -313,6 +336,24 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
                   ),
                 ),
               ),
+              if (isSelected)
+                Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _success.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Text(
+                    'Aktif',
+                    style: TextStyle(
+                      color: _success,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
               IconButton(
                 onPressed: () => _startEdit(cycle),
                 icon: const Icon(Icons.edit_outlined),
@@ -332,6 +373,61 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
             ),
           ),
           Text('Status: ${cycle.status ?? '-'}'),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: cycle.id == null || isSelected
+                  ? null
+                  : () => _selectCycle(cycle),
+              icon: const Icon(Icons.how_to_reg_outlined),
+              label: Text(
+                isSelected ? 'Cycle aktif' : 'Pilih cycle ini',
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: isSelected ? _success : _primary,
+                side: BorderSide(
+                  color: isSelected ? _success : _primary,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSelectedCycleBanner() {
+    final bool hasSelection = _selectedCycleId != null;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: hasSelection ? _success.withOpacity(0.08) : _warning.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: hasSelection ? _success.withOpacity(0.25) : _warning.withOpacity(0.25),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            hasSelection ? Icons.check_circle_outline : Icons.info_outline,
+            color: hasSelection ? _success : _warning,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              hasSelection
+                  ? 'Cycle aktif: ${_selectedCycleName ?? 'ID $_selectedCycleId'}'
+                  : 'Belum ada farm cycle aktif. Pilih salah satu cycle di bawah agar control screen dan stok pakan terhubung.',
+              style: TextStyle(
+                color: hasSelection ? _success : _textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -371,6 +467,8 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
         _cycles = cycles;
         _isLoadingCycles = false;
       });
+
+      await _loadSelectedCycle();
     } catch (error) {
       if (!mounted) return;
 
@@ -379,6 +477,71 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
         _isLoadingCycles = false;
       });
     }
+  }
+
+  Future<void> _loadSelectedCycle() async {
+    final prefs = await SharedPreferences.getInstance();
+    int? selectedId;
+
+    for (final key in _cycleIdKeys) {
+      final intValue = prefs.getInt(key);
+      if (intValue != null) {
+        selectedId = intValue;
+        break;
+      }
+
+      final stringValue = prefs.getString(key);
+      final parsed = int.tryParse(stringValue?.trim() ?? '');
+      if (parsed != null) {
+        selectedId = parsed;
+        break;
+      }
+    }
+
+    final selectedName = selectedId == null
+        ? null
+        : _cycles.where((cycle) => cycle.id == selectedId).map((cycle) {
+            return cycle.cycleName ?? 'ID $selectedId';
+          }).cast<String?>().firstOrNull;
+
+    if (!mounted) {
+      _selectedCycleId = selectedId;
+      _selectedCycleName = selectedName;
+      return;
+    }
+
+    setState(() {
+      _selectedCycleId = selectedId;
+      _selectedCycleName = selectedName;
+    });
+  }
+
+  Future<void> _selectCycle(FarmCycle cycle) async {
+    final cycleId = cycle.id;
+    if (cycleId == null) {
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    for (final key in _cycleIdKeys) {
+      await prefs.setInt(key, cycleId);
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _selectedCycleId = cycleId;
+      _selectedCycleName = cycle.cycleName ?? 'ID $cycleId';
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Farm cycle "${cycle.cycleName ?? cycleId}" berhasil dipilih.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> _pickSeedingDate() async {
@@ -428,6 +591,10 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
     });
 
     if (result.success) {
+      final savedCycle = result.farmCycle;
+      if (savedCycle?.id != null) {
+        await _persistSelectedCycle(savedCycle!);
+      }
       _cancelEdit();
       await _loadCycles();
       if (!mounted) return;
@@ -462,5 +629,26 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
     final day = date.day.toString().padLeft(2, '0');
     final month = date.month.toString().padLeft(2, '0');
     return '$day-$month-${date.year}';
+  }
+
+  Future<void> _persistSelectedCycle(FarmCycle cycle) async {
+    final cycleId = cycle.id;
+    if (cycleId == null) {
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    for (final key in _cycleIdKeys) {
+      await prefs.setInt(key, cycleId);
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _selectedCycleId = cycleId;
+      _selectedCycleName = cycle.cycleName ?? 'ID $cycleId';
+    });
   }
 }

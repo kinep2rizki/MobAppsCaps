@@ -1,7 +1,9 @@
 // ignore_for_file: file_names
 import 'package:flutter/material.dart';
 import 'package:my_app/Services/ControlService.dart';
+import 'package:my_app/Services/StockPakanService.dart';
 import 'package:my_app/pages/ControlFiture/ControlActuator.dart';
+import 'package:my_app/pages/ControlFiture/StockPakan.dart';
 
 class ControlScreen extends StatefulWidget {
   const ControlScreen({super.key});
@@ -14,35 +16,31 @@ class _ControlScreenState extends State<ControlScreen> {
   static const Color _background = Color(0xFFF9FAFB);
   static const Color _surface = Color(0xFFFFFFFF);
   static const Color _primary = Color(0xFF2563EB);
-  static const Color _secondaryBlue = Color(0xFF3B82F6);
   static const Color _textPrimary = Color(0xFF1F2937);
   static const Color _textSecondary = Color(0xFF6B7280);
   static const Color _borderColor = Color(0xFFE5E7EB);
-  static const Color _warning = Color(0xFFEA580C);
   static const Color _success = Color(0xFF059669);
   static const List<String> _actuatorDeviceNames = ['pompa', 'aerator'];
 
   bool _isAutoMode = true;
   bool _isLoadingActuatorStatus = false;
+  bool _isLoadingStockPakan = false;
+  bool _isLoadingStockHistory = false;
+  bool _isLoadingStockStats = false;
   final Map<String, ActuatorSnapshot> _actuatorSnapshots = {};
   final Map<String, String> _actuatorStatusErrors = {};
+  FeedStock? _stockPakan;
+  FeedStockStats? _stockStats;
+  List<FeedStockTransaction> _stockHistory = const [];
+  String? _stockPakanError;
+  String? _stockStatsError;
+  String? _stockHistoryError;
   late final List<bool> _scheduleEnabled;
-  final TextEditingController _stockController = TextEditingController();
 
   final List<_SchedulePlan> _schedules = const [
     _SchedulePlan(time: '07:00', amount: '3.0 Kg'),
     _SchedulePlan(time: '13:00', amount: '3.0 Kg'),
     _SchedulePlan(time: '19:00', amount: '3.0 Kg'),
-  ];
-
-  final List<_ConsumptionPoint> _consumption = const [
-    _ConsumptionPoint(day: 'Sen', amount: 10),
-    _ConsumptionPoint(day: 'Sel', amount: 8.3),
-    _ConsumptionPoint(day: 'Rab', amount: 5.2),
-    _ConsumptionPoint(day: 'Kam', amount: 9.5),
-    _ConsumptionPoint(day: 'Jum', amount: 10),
-    _ConsumptionPoint(day: 'Sab', amount: 10),
-    _ConsumptionPoint(day: 'Mgg', amount: 7.3),
   ];
 
   @override
@@ -52,14 +50,9 @@ class _ControlScreenState extends State<ControlScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _refreshActuatorStatus();
+        _refreshStockPakan();
       }
     });
-  }
-
-  @override
-  void dispose() {
-    _stockController.dispose();
-    super.dispose();
   }
 
   Future<void> _refreshActuatorStatus() async {
@@ -99,6 +92,138 @@ class _ControlScreenState extends State<ControlScreen> {
         ..addAll(errors);
       _isLoadingActuatorStatus = false;
     });
+  }
+
+  Future<void> _refreshStockPakan() async {
+    if (_isLoadingStockPakan) {
+      return;
+    }
+
+    setState(() {
+      _isLoadingStockPakan = true;
+      _stockPakanError = null;
+    });
+
+    try {
+      final stock = await StockPakanService.getRemainingFeedStock();
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _stockPakan = stock;
+      });
+
+      final stockId = stock?.id;
+      if (stockId != null) {
+        await _refreshStockStats(stockId);
+        await _refreshStockHistory(stockId);
+      } else {
+        if (!mounted) {
+          return;
+        }
+
+        setState(() {
+          _stockStats = null;
+          _stockHistory = const [];
+          _stockStatsError = null;
+          _stockHistoryError = null;
+        });
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _stockPakanError = error.toString().replaceFirst('Exception: ', '');
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingStockPakan = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _refreshStockStats(int stockId) async {
+    if (_isLoadingStockStats) {
+      return;
+    }
+
+    setState(() {
+      _isLoadingStockStats = true;
+      _stockStatsError = null;
+    });
+
+    try {
+      final stats = await StockPakanService.getFeedStockStats(stockId: stockId);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _stockStats = stats;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _stockStats = null;
+        _stockStatsError = error.toString().replaceFirst('Exception: ', '');
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingStockStats = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _refreshStockHistory(int stockId) async {
+    if (_isLoadingStockHistory) {
+      return;
+    }
+
+    setState(() {
+      _isLoadingStockHistory = true;
+      _stockHistoryError = null;
+    });
+
+    try {
+      final history = await StockPakanService.getFeedStockHistory(
+        stockId: stockId,
+        limit: 100,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _stockHistory = history;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _stockHistory = const [];
+        _stockHistoryError = error.toString().replaceFirst('Exception: ', '');
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingStockHistory = false;
+        });
+      }
+    }
   }
 
   @override
@@ -648,224 +773,17 @@ class _ControlScreenState extends State<ControlScreen> {
   }
 
   Widget _buildStockCard() {
-    return Container(
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFFFF7ED), Color(0xFFFEE3C8)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(30),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.orange.withOpacity(0.15),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(Icons.eco, color: _warning),
-              ),
-              const SizedBox(width: 12),
-              const Text(
-                'Stok Pakan',
-                style: TextStyle(
-                  color: _textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          const Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '45.5',
-                style: TextStyle(
-                  color: _textPrimary,
-                  fontSize: 44,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              SizedBox(width: 6),
-              Padding(
-                padding: EdgeInsets.only(bottom: 6),
-                child: Text(
-                  'Kg Tersisa',
-                  style: TextStyle(color: _textSecondary, fontSize: 14),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'perkiraan habis dalam 5 hari',
-            style: TextStyle(color: _warning, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: LinearProgressIndicator(
-              value: 0.65,
-              minHeight: 10,
-              backgroundColor: Colors.white.withOpacity(0.4),
-              valueColor: const AlwaysStoppedAnimation<Color>(_warning),
-            ),
-          ),
-          const SizedBox(height: 20),
-          _buildConsumptionChart(),
-          const SizedBox(height: 18),
-          _buildUpdateStockForm(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildConsumptionChart() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.6)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.bar_chart, color: _primary, size: 18),
-              SizedBox(width: 6),
-              Text(
-                'Konsumsi 7 Hari Terakhir',
-                style: TextStyle(
-                  color: _textPrimary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: _consumption
-                  .map(
-                    (point) => Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: _buildConsumptionChip(point),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildConsumptionChip(_ConsumptionPoint point) {
-    return Container(
-      width: 44,
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        color: _secondaryBlue,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        children: [
-          Text(
-            point.amount.toStringAsFixed(point.amount % 1 == 0 ? 0 : 1),
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            point.day,
-            style: const TextStyle(color: Colors.white, fontSize: 11),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildUpdateStockForm() {
-    Widget buildTextField() {
-      return TextField(
-        controller: _stockController,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: InputDecoration(
-          hintText: 'Jumlah (Kg)',
-          filled: true,
-          fillColor: Colors.white,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide.none,
-          ),
-        ),
-      );
-    }
-
-    Widget buildActionButton() {
-      return SizedBox(
-        height: 52,
-        child: ElevatedButton(
-          onPressed: () => _stockController.clear(),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: _secondaryBlue,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-          ),
-          child: const Text(
-            'Update Stok',
-            style: TextStyle(color: Colors.white),
-          ),
-        ),
-      );
-    }
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth < 360) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              buildTextField(),
-              const SizedBox(height: 12),
-              buildActionButton(),
-            ],
-          );
-        }
-
-        return Row(
-          children: [
-            Expanded(child: buildTextField()),
-            const SizedBox(width: 12),
-            buildActionButton(),
-          ],
-        );
-      },
+    return StockPakanCard(
+      stock: _stockPakan,
+      isLoading: _isLoadingStockPakan,
+      stats: _stockStats,
+      isStatsLoading: _isLoadingStockStats,
+      statsErrorMessage: _stockStatsError,
+      errorMessage: _stockPakanError,
+      history: _stockHistory,
+      isHistoryLoading: _isLoadingStockHistory,
+      historyErrorMessage: _stockHistoryError,
+      onRefresh: _refreshStockPakan,
     );
   }
 }
@@ -875,11 +793,4 @@ class _SchedulePlan {
   final String amount;
 
   const _SchedulePlan({required this.time, required this.amount});
-}
-
-class _ConsumptionPoint {
-  final String day;
-  final double amount;
-
-  const _ConsumptionPoint({required this.day, required this.amount});
 }

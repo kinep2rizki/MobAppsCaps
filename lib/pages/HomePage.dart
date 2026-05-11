@@ -10,6 +10,7 @@ import 'package:my_app/pages/HomeFeature/FarmCycle.dart';
 import 'package:my_app/pages/HomeFeature/prediksi_panen.dart';
 import 'package:my_app/pages/ProfileScreen.dart';
 import 'package:my_app/Services/HomeService/HomePage_api.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -35,6 +36,16 @@ class _HomePageState extends State<HomePage> {
   bool _hasHarvestEstimateError = false;
 
   static const String _overrideBaseUrl = ApiService.baseUrl;
+  static const List<String> _cycleIdKeys = [
+    'farming_cycle_id',
+    'farmingCycleId',
+    'selected_farming_cycle_id',
+    'selectedFarmingCycleId',
+    'active_farming_cycle_id',
+    'activeFarmingCycleId',
+    'cycle_id',
+    'cycleId',
+  ];
 
   static const Color _primary = Color(0xFF2563EB);
   static const Color _background = Color(0xFFF9FAFB);
@@ -72,6 +83,8 @@ class _HomePageState extends State<HomePage> {
   Future<Map<String, dynamic>> _fetchInitialData() async {
     _isFetching = true;
     try {
+      await _fetchInitialFarmCycleData();
+
       final raw = await HomePageApi.getLatestSensorData(
         overrideBaseUrl: _overrideBaseUrl.isEmpty ? null : _overrideBaseUrl,
         timeout: const Duration(seconds: 10),
@@ -83,7 +96,6 @@ class _HomePageState extends State<HomePage> {
           _lastSensorData = latest;
         } else {
           setState(() {
-        _fetchInitialFarmCycleData();
             _lastSensorData = latest;
           });
         }
@@ -97,9 +109,44 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _fetchInitialFarmCycleData() async {
     try {
-      final currentCycle = await FarmCycleService.getLatestFarmCycle(
+      final prefs = await SharedPreferences.getInstance();
+      int? selectedCycleId;
+
+      for (final key in _cycleIdKeys) {
+        final intValue = prefs.getInt(key);
+        if (intValue != null) {
+          selectedCycleId = intValue;
+          break;
+        }
+
+        final stringValue = prefs.getString(key);
+        final parsed = int.tryParse(stringValue?.trim() ?? '');
+        if (parsed != null) {
+          selectedCycleId = parsed;
+          break;
+        }
+      }
+
+      final cycles = await FarmCycleService.getFarmCycles(
         overrideBaseUrl: _overrideBaseUrl.isEmpty ? null : _overrideBaseUrl,
       );
+
+      FarmCycle? currentCycle;
+      if (selectedCycleId != null) {
+        for (final cycle in cycles) {
+          if (cycle.id == selectedCycleId) {
+            currentCycle = cycle;
+            break;
+          }
+        }
+      }
+
+      currentCycle ??= cycles.isEmpty
+          ? null
+          : await FarmCycleService.getLatestFarmCycle(
+              overrideBaseUrl:
+                  _overrideBaseUrl.isEmpty ? null : _overrideBaseUrl,
+            );
 
       if (!mounted) {
         _currentFarmCycle = currentCycle;
@@ -442,12 +489,16 @@ class _HomePageState extends State<HomePage> {
             .inDays;
 
     return InkWell(
-      onTap: () {
-        Navigator.of(context).push(
+      onTap: () async {
+        await Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => const FarmCyclePage(),
           ),
         );
+        if (mounted) {
+          await _fetchInitialFarmCycleData();
+          setState(() {});
+        }
       },
       borderRadius: BorderRadius.circular(20),
       child: Container(
@@ -694,26 +745,10 @@ class _HomePageState extends State<HomePage> {
     return _warningBackground;
   }
 
-  String _formatWholeNumber(double? value) {
-    if (value == null) {
-      return '-';
-    }
-
-    return value.toStringAsFixed(0);
-  }
-
   String _formatDateOnly(DateTime date) {
     final day = date.day.toString().padLeft(2, '0');
     final month = date.month.toString().padLeft(2, '0');
     return '$day/$month/${date.year}';
-  }
-
-  String _formatDays(double? value) {
-    if (value == null) {
-      return '-';
-    }
-
-    return '${value.toStringAsFixed(0)} Hari';
   }
 
   String _formatValue(double? value, {String unit = '', int precision = 1}) {
