@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:my_app/Services/AuthSessionService.dart';
 import 'package:my_app/Services/api_service.dart';
 import 'package:my_app/Services/ProfileService.dart';
 
@@ -145,13 +146,23 @@ class FarmCycleService {
     );
 
     try {
-      final response = await httpClient.get(
-        Uri.parse('$resolvedBaseUrl/farming-cycle/active'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $resolvedToken',
+      final response = await AuthSessionService.performWithAutoRefresh(
+        client: httpClient,
+        overrideBaseUrl: overrideBaseUrl,
+        authToken: resolvedToken,
+        timeout: requestTimeout,
+        request: (token) {
+          return httpClient
+              .get(
+                Uri.parse('$resolvedBaseUrl/farming-cycle/active'),
+                headers: {
+                  'Accept': 'application/json',
+                  'Authorization': 'Bearer $token',
+                },
+              )
+              .timeout(requestTimeout);
         },
-      ).timeout(requestTimeout);
+      );
 
       debugPrint(
         '[FarmCycleService] GET /farming-cycle/active status: ${response.statusCode}',
@@ -237,13 +248,23 @@ class FarmCycleService {
     );
 
     try {
-      final response = await httpClient.get(
-        Uri.parse('$resolvedBaseUrl/farming-cycle/'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $resolvedToken',
+      final response = await AuthSessionService.performWithAutoRefresh(
+        client: httpClient,
+        overrideBaseUrl: overrideBaseUrl,
+        authToken: resolvedToken,
+        timeout: requestTimeout,
+        request: (token) {
+          return httpClient
+              .get(
+                Uri.parse('$resolvedBaseUrl/farming-cycle/'),
+                headers: {
+                  'Accept': 'application/json',
+                  'Authorization': 'Bearer $token',
+                },
+              )
+              .timeout(requestTimeout);
         },
-      ).timeout(requestTimeout);
+      );
 
       debugPrint(
         '[FarmCycleService] GET /farming-cycle/ status: ${response.statusCode}',
@@ -307,15 +328,25 @@ class FarmCycleService {
     );
 
     try {
-      final response = await httpClient.post(
-        Uri.parse('$resolvedBaseUrl/farming-cycle/'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $resolvedToken',
+      final response = await AuthSessionService.performWithAutoRefresh(
+        client: httpClient,
+        overrideBaseUrl: overrideBaseUrl,
+        authToken: resolvedToken,
+        timeout: requestTimeout,
+        request: (token) {
+          return httpClient
+              .post(
+                Uri.parse('$resolvedBaseUrl/farming-cycle/'),
+                headers: {
+                  'Accept': 'application/json',
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer $token',
+                },
+                body: jsonEncode(payload),
+              )
+              .timeout(requestTimeout);
         },
-        body: jsonEncode(payload),
-      ).timeout(requestTimeout);
+      );
 
       debugPrint(
         '[FarmCycleService] POST /farming-cycle/ status: ${response.statusCode}',
@@ -415,15 +446,25 @@ class FarmCycleService {
     );
 
     try {
-      final response = await httpClient.put(
-        Uri.parse('$resolvedBaseUrl/farming-cycle/$cycleId'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $resolvedToken',
+      final response = await AuthSessionService.performWithAutoRefresh(
+        client: httpClient,
+        overrideBaseUrl: overrideBaseUrl,
+        authToken: resolvedToken,
+        timeout: requestTimeout,
+        request: (token) {
+          return httpClient
+              .put(
+                Uri.parse('$resolvedBaseUrl/farming-cycle/$cycleId'),
+                headers: {
+                  'Accept': 'application/json',
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer $token',
+                },
+                body: jsonEncode(payload),
+              )
+              .timeout(requestTimeout);
         },
-        body: jsonEncode(payload),
-      ).timeout(requestTimeout);
+      );
 
       debugPrint(
         '[FarmCycleService] PUT /farming-cycle/$cycleId status: ${response.statusCode}',

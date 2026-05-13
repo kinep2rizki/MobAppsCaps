@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../AuthSessionService.dart';
 import '../api_service.dart';
 import '../ProfileService.dart';
 
@@ -208,13 +209,23 @@ class StockPakanService {
     );
 
     try {
-      final response = await httpClient.get(
-        Uri.parse('$resolvedBaseUrl/feed/stocks/$resolvedFarmingCycleId'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $resolvedToken',
+      final response = await AuthSessionService.performWithAutoRefresh(
+        client: httpClient,
+        overrideBaseUrl: overrideBaseUrl,
+        authToken: resolvedToken,
+        timeout: requestTimeout,
+        request: (token) {
+          return httpClient
+              .get(
+                Uri.parse('$resolvedBaseUrl/feed/stocks/$resolvedFarmingCycleId'),
+                headers: {
+                  'Accept': 'application/json',
+                  'Authorization': 'Bearer $token',
+                },
+              )
+              .timeout(requestTimeout);
         },
-      ).timeout(requestTimeout);
+      );
 
       debugPrint(
         '[StockPakanService] GET /feed/stocks/$resolvedFarmingCycleId status: ${response.statusCode}',
@@ -284,17 +295,25 @@ class StockPakanService {
       );
 
       try {
-        final response = await httpClient
-            .patch(
-              Uri.parse('$resolvedBaseUrl/feed/stocks/$stockId'),
-              headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer $resolvedToken',
-              },
-              body: jsonEncode(payload),
-            )
-            .timeout(requestTimeout);
+        final response = await AuthSessionService.performWithAutoRefresh(
+          client: httpClient,
+          overrideBaseUrl: overrideBaseUrl,
+          authToken: resolvedToken,
+          timeout: requestTimeout,
+          request: (token) {
+            return httpClient
+                .patch(
+                  Uri.parse('$resolvedBaseUrl/feed/stocks/$stockId'),
+                  headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer $token',
+                  },
+                  body: jsonEncode(payload),
+                )
+                .timeout(requestTimeout);
+          },
+        );
 
         debugPrint(
           '[StockPakanService] PATCH /feed/stocks/$stockId status: ${response.statusCode}',
@@ -468,17 +487,25 @@ class StockPakanService {
     );
 
     try {
-      final response = await httpClient
-          .post(
-            Uri.parse('$resolvedBaseUrl/feed/stocks/$stockId/transaction'),
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $resolvedToken',
-            },
-            body: jsonEncode(payload),
-          )
-          .timeout(requestTimeout);
+      final response = await AuthSessionService.performWithAutoRefresh(
+        client: httpClient,
+        overrideBaseUrl: overrideBaseUrl,
+        authToken: resolvedToken,
+        timeout: requestTimeout,
+        request: (token) {
+          return httpClient
+              .post(
+                Uri.parse('$resolvedBaseUrl/feed/stocks/$stockId/transaction'),
+                headers: {
+                  'Accept': 'application/json',
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer $token',
+                },
+                body: jsonEncode(payload),
+              )
+              .timeout(requestTimeout);
+        },
+      );
 
       debugPrint(
         '[StockPakanService] POST /feed/stocks/$stockId/transaction status: ${response.statusCode}',
@@ -542,13 +569,23 @@ class StockPakanService {
     );
 
     try {
-      final response = await httpClient.get(
-        Uri.parse('$resolvedBaseUrl/feed/stocks/$stockId/stats'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $resolvedToken',
+      final response = await AuthSessionService.performWithAutoRefresh(
+        client: httpClient,
+        overrideBaseUrl: overrideBaseUrl,
+        authToken: resolvedToken,
+        timeout: requestTimeout,
+        request: (token) {
+          return httpClient
+              .get(
+                Uri.parse('$resolvedBaseUrl/feed/stocks/$stockId/stats'),
+                headers: {
+                  'Accept': 'application/json',
+                  'Authorization': 'Bearer $token',
+                },
+              )
+              .timeout(requestTimeout);
         },
-      ).timeout(requestTimeout);
+      );
 
       debugPrint(
         '[StockPakanService] GET /feed/stocks/$stockId/stats status: ${response.statusCode}',
@@ -650,13 +687,23 @@ class StockPakanService {
       final historyUri = Uri.parse('$resolvedBaseUrl/feed/stocks/$stockId/history')
           .replace(queryParameters: <String, String>{'limit': limit.toString()});
 
-      final response = await httpClient.get(
-        historyUri,
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $resolvedToken',
+      final response = await AuthSessionService.performWithAutoRefresh(
+        client: httpClient,
+        overrideBaseUrl: overrideBaseUrl,
+        authToken: resolvedToken,
+        timeout: requestTimeout,
+        request: (token) {
+          return httpClient
+              .get(
+                historyUri,
+                headers: {
+                  'Accept': 'application/json',
+                  'Authorization': 'Bearer $token',
+                },
+              )
+              .timeout(requestTimeout);
         },
-      ).timeout(requestTimeout);
+      );
 
       debugPrint(
         '[StockPakanService] GET /feed/stocks/$stockId/history status: ${response.statusCode}',

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../AuthSessionService.dart';
 import '../ProfileService.dart';
 import '../api_service.dart';
 
@@ -115,13 +116,23 @@ class FeedHistoryService {
       final historyUri = Uri.parse('$resolvedBaseUrl/feed/history/$farmingCycleId')
           .replace(queryParameters: <String, String>{'limit': limit.toString()});
 
-      final response = await httpClient.get(
-        historyUri,
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $resolvedToken',
+      final response = await AuthSessionService.performWithAutoRefresh(
+        client: httpClient,
+        overrideBaseUrl: overrideBaseUrl,
+        authToken: resolvedToken,
+        timeout: requestTimeout,
+        request: (token) {
+          return httpClient
+              .get(
+                historyUri,
+                headers: {
+                  'Accept': 'application/json',
+                  'Authorization': 'Bearer $token',
+                },
+              )
+              .timeout(requestTimeout);
         },
-      ).timeout(requestTimeout);
+      );
 
       debugPrint(
         '[FeedHistoryService] GET /feed/history/$farmingCycleId status: ${response.statusCode}',
@@ -199,17 +210,25 @@ class FeedHistoryService {
     );
 
     try {
-      final response = await httpClient
-          .post(
-            Uri.parse('$resolvedBaseUrl/feed/history/$farmingCycleId'),
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $resolvedToken',
-            },
-            body: jsonEncode(payload),
-          )
-          .timeout(requestTimeout);
+      final response = await AuthSessionService.performWithAutoRefresh(
+        client: httpClient,
+        overrideBaseUrl: overrideBaseUrl,
+        authToken: resolvedToken,
+        timeout: requestTimeout,
+        request: (token) {
+          return httpClient
+              .post(
+                Uri.parse('$resolvedBaseUrl/feed/history/$farmingCycleId'),
+                headers: {
+                  'Accept': 'application/json',
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer $token',
+                },
+                body: jsonEncode(payload),
+              )
+              .timeout(requestTimeout);
+        },
+      );
 
       debugPrint(
         '[FeedHistoryService] POST /feed/history/$farmingCycleId status: ${response.statusCode}',
@@ -273,13 +292,23 @@ class FeedHistoryService {
     );
 
     try {
-      final response = await httpClient.get(
-        Uri.parse('$resolvedBaseUrl/feed/history/$farmingCycleId/stats'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $resolvedToken',
+      final response = await AuthSessionService.performWithAutoRefresh(
+        client: httpClient,
+        overrideBaseUrl: overrideBaseUrl,
+        authToken: resolvedToken,
+        timeout: requestTimeout,
+        request: (token) {
+          return httpClient
+              .get(
+                Uri.parse('$resolvedBaseUrl/feed/history/$farmingCycleId/stats'),
+                headers: {
+                  'Accept': 'application/json',
+                  'Authorization': 'Bearer $token',
+                },
+              )
+              .timeout(requestTimeout);
         },
-      ).timeout(requestTimeout);
+      );
 
       debugPrint(
         '[FeedHistoryService] GET /feed/history/$farmingCycleId/stats status: ${response.statusCode}',

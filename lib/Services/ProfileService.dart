@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'AuthSessionService.dart';
 import 'api_service.dart';
 
 class ProfileUser {
@@ -177,17 +178,25 @@ class ProfileService {
     final shouldCloseClient = client == null;
 
     try {
-      final response = await httpClient
-          .put(
-            Uri.parse(
-                    '${_resolveBaseUrl(overrideBaseUrl)}/users/change-password')
-                .replace(queryParameters: queryParameters),
-            headers: {
-              'Accept': 'application/json',
-              'Authorization': 'Bearer $resolvedToken',
-            },
-          )
-          .timeout(requestTimeout);
+      final response = await AuthSessionService.performWithAutoRefresh(
+        client: httpClient,
+        overrideBaseUrl: overrideBaseUrl,
+        authToken: resolvedToken,
+        timeout: requestTimeout,
+        request: (token) {
+          return httpClient
+              .put(
+                Uri.parse(
+                        '${_resolveBaseUrl(overrideBaseUrl)}/users/change-password')
+                    .replace(queryParameters: queryParameters),
+                headers: {
+                  'Accept': 'application/json',
+                  'Authorization': 'Bearer $token',
+                },
+              )
+              .timeout(requestTimeout);
+        },
+      );
 
       final decodedBody = _decodeResponseBody(response.body);
 
@@ -245,22 +254,30 @@ class ProfileService {
     final shouldCloseClient = client == null;
 
     try {
-      final request = http.MultipartRequest(
-        'POST',
-        Uri.parse('${_resolveBaseUrl(overrideBaseUrl)}/auth/upload-photo'),
-      )
-        ..headers.addAll({
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $resolvedToken',
-        })
-        ..files.add(
-          await http.MultipartFile.fromPath('file', photoFile.path),
-        );
+      final response = await AuthSessionService.performWithAutoRefresh(
+        client: httpClient,
+        overrideBaseUrl: overrideBaseUrl,
+        authToken: resolvedToken,
+        timeout: requestTimeout,
+        request: (token) async {
+          final request = http.MultipartRequest(
+            'POST',
+            Uri.parse('${_resolveBaseUrl(overrideBaseUrl)}/auth/upload-photo'),
+          )
+            ..headers.addAll({
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $token',
+            })
+            ..files.add(
+              await http.MultipartFile.fromPath('file', photoFile.path),
+            );
 
-      final streamedResponse = await httpClient.send(request).timeout(
-            requestTimeout,
-          );
-      final response = await http.Response.fromStream(streamedResponse);
+          final streamedResponse = await httpClient.send(request).timeout(
+                requestTimeout,
+              );
+          return http.Response.fromStream(streamedResponse);
+        },
+      );
       final decodedBody = _decodeResponseBody(response.body);
 
       if (response.statusCode != 200) {
@@ -335,17 +352,25 @@ class ProfileService {
     final shouldCloseClient = client == null;
 
     try {
-      final response = await httpClient
-          .put(
-            Uri.parse('${_resolveBaseUrl(overrideBaseUrl)}/auth/me'),
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $resolvedToken',
-            },
-            body: jsonEncode(payload),
-          )
-          .timeout(requestTimeout);
+      final response = await AuthSessionService.performWithAutoRefresh(
+        client: httpClient,
+        overrideBaseUrl: overrideBaseUrl,
+        authToken: resolvedToken,
+        timeout: requestTimeout,
+        request: (token) {
+          return httpClient
+              .put(
+                Uri.parse('${_resolveBaseUrl(overrideBaseUrl)}/auth/me'),
+                headers: {
+                  'Accept': 'application/json',
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer $token',
+                },
+                body: jsonEncode(payload),
+              )
+              .timeout(requestTimeout);
+        },
+      );
 
       final decodedBody = _decodeResponseBody(response.body);
 
@@ -421,13 +446,23 @@ class ProfileService {
     final shouldCloseClient = client == null;
 
     try {
-      final response = await httpClient.get(
-        Uri.parse('${_resolveBaseUrl(overrideBaseUrl)}/auth/me'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $resolvedToken',
+      final response = await AuthSessionService.performWithAutoRefresh(
+        client: httpClient,
+        overrideBaseUrl: overrideBaseUrl,
+        authToken: resolvedToken,
+        timeout: requestTimeout,
+        request: (token) {
+          return httpClient
+              .get(
+                Uri.parse('${_resolveBaseUrl(overrideBaseUrl)}/auth/me'),
+                headers: {
+                  'Accept': 'application/json',
+                  'Authorization': 'Bearer $token',
+                },
+              )
+              .timeout(requestTimeout);
         },
-      ).timeout(requestTimeout);
+      );
 
       final decodedBody = _decodeResponseBody(response.body);
 

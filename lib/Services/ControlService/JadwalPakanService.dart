@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../AuthSessionService.dart';
 import '../ProfileService.dart';
 import '../api_service.dart';
 
@@ -81,13 +82,23 @@ class JadwalPakanService {
 		);
 
 		try {
-			final response = await httpClient.get(
-				Uri.parse('$resolvedBaseUrl/feed/schedule/$resolvedFarmingCycleId'),
-				headers: {
-					'Accept': 'application/json',
-					'Authorization': 'Bearer $resolvedToken',
+			final response = await AuthSessionService.performWithAutoRefresh(
+				client: httpClient,
+				overrideBaseUrl: overrideBaseUrl,
+				authToken: resolvedToken,
+				timeout: requestTimeout,
+				request: (token) {
+					return httpClient
+							.get(
+								Uri.parse('$resolvedBaseUrl/feed/schedule/$resolvedFarmingCycleId'),
+								headers: {
+									'Accept': 'application/json',
+									'Authorization': 'Bearer $token',
+								},
+							)
+							.timeout(requestTimeout);
 				},
-			).timeout(requestTimeout);
+			);
 
 			debugPrint(
 				'[JadwalPakanService] GET /feed/schedule/$resolvedFarmingCycleId status: ${response.statusCode}',
@@ -165,17 +176,25 @@ class JadwalPakanService {
 		);
 
 		try {
-			final response = await httpClient
-					.post(
-						Uri.parse('$resolvedBaseUrl/feed/schedule/$farmingCycleId'),
-						headers: {
-							'Accept': 'application/json',
-							'Content-Type': 'application/json',
-							'Authorization': 'Bearer $resolvedToken',
-						},
-						body: jsonEncode(payload),
-					)
-					.timeout(requestTimeout);
+			final response = await AuthSessionService.performWithAutoRefresh(
+				client: httpClient,
+				overrideBaseUrl: overrideBaseUrl,
+				authToken: resolvedToken,
+				timeout: requestTimeout,
+				request: (token) {
+					return httpClient
+							.post(
+								Uri.parse('$resolvedBaseUrl/feed/schedule/$farmingCycleId'),
+								headers: {
+									'Accept': 'application/json',
+									'Content-Type': 'application/json',
+									'Authorization': 'Bearer $token',
+								},
+								body: jsonEncode(payload),
+							)
+							.timeout(requestTimeout);
+				},
+			);
 
 			debugPrint(
 				'[JadwalPakanService] POST /feed/schedule/$farmingCycleId status: ${response.statusCode}',
@@ -276,17 +295,25 @@ class JadwalPakanService {
 		);
 
 		try {
-			final response = await httpClient
-					.patch(
-						Uri.parse('$resolvedBaseUrl/feed/schedule/$scheduleId'),
-						headers: {
-							'Accept': 'application/json',
-							'Content-Type': 'application/json',
-							'Authorization': 'Bearer $resolvedToken',
-						},
-						body: jsonEncode(payload),
-					)
-					.timeout(requestTimeout);
+			final response = await AuthSessionService.performWithAutoRefresh(
+				client: httpClient,
+				overrideBaseUrl: overrideBaseUrl,
+				authToken: resolvedToken,
+				timeout: requestTimeout,
+				request: (token) {
+					return httpClient
+							.put(
+								Uri.parse('$resolvedBaseUrl/feed/schedule/$scheduleId'),
+								headers: {
+									'Accept': 'application/json',
+									'Content-Type': 'application/json',
+									'Authorization': 'Bearer $token',
+								},
+								body: jsonEncode(payload),
+							)
+							.timeout(requestTimeout);
+				},
+			);
 
 			debugPrint(
 				'[JadwalPakanService] PATCH /feed/schedule/$scheduleId status: ${response.statusCode}',

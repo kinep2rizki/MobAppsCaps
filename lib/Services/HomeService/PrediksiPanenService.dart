@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:my_app/Services/AuthSessionService.dart';
 import 'package:my_app/Services/api_service.dart';
 
 class HarvestEstimate {
@@ -184,24 +185,35 @@ class PrediksiPanenService {
 		);
 
 		try {
-			final response = await (normalizedMethod == 'POST'
-					? httpClient.post(
-						uri,
-						headers: {
-							'Accept': 'application/json',
-							'Content-Type': 'application/json',
-							'Authorization': 'Bearer $resolvedToken',
-						},
-						body: hasPayload ? jsonEncode(payload) : null,
-					)
-					: httpClient.get(
-						uri,
-						headers: {
-							'Accept': 'application/json',
-							'Authorization': 'Bearer $resolvedToken',
-						},
-					))
-				.timeout(requestTimeout);
+			final response = await AuthSessionService.performWithAutoRefresh(
+				client: httpClient,
+				overrideBaseUrl: overrideBaseUrl,
+				authToken: resolvedToken,
+				timeout: requestTimeout,
+				request: (token) {
+					final headers = {
+						'Accept': 'application/json',
+						'Authorization': 'Bearer $token',
+					};
+					if (normalizedMethod == 'POST') {
+						headers['Content-Type'] = 'application/json';
+						return httpClient
+								.post(
+									uri,
+									headers: headers,
+									body: hasPayload ? jsonEncode(payload) : null,
+								)
+								.timeout(requestTimeout);
+					}
+
+					return httpClient
+							.get(
+								uri,
+								headers: headers,
+							)
+							.timeout(requestTimeout);
+				},
+			);
 
 			debugPrint(
 				'[PrediksiPanenService] $normalizedMethod /ml/harvest-estimate/$farmingCycleId status: ${response.statusCode}',
