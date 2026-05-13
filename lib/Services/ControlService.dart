@@ -107,6 +107,35 @@ class ControlService {
     }
   }
 
+  static Future<List<ActuatorSnapshot>> getAllActuatorStatus({
+    http.Client? client,
+    String? overrideBaseUrl,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final httpClient = client ?? http.Client();
+    final shouldCloseClient = client == null;
+    final resolvedBaseUrl = _resolveBaseUrl(overrideBaseUrl);
+
+    try {
+      final response = await httpClient.get(
+        Uri.parse('$resolvedBaseUrl/actuator/status'),
+        headers: const {'Accept': 'application/json'},
+      ).timeout(timeout);
+
+      if (response.statusCode != 200) {
+        throw Exception('Gagal memuat status semua aktuator');
+      }
+
+      return _snapshotListFromResponse(response.body);
+    } on TimeoutException {
+      throw Exception('Permintaan status semua aktuator timeout');
+    } finally {
+      if (shouldCloseClient) {
+        httpClient.close();
+      }
+    }
+  }
+
   static Future<ActuatorSnapshot> updateActuatorMode({
     required String deviceName,
     required String mode,
@@ -268,6 +297,68 @@ class ControlService {
       note: readString(const ['message', 'note', 'detail']),
       rawData: data,
     );
+  }
+
+  static List<ActuatorSnapshot> _snapshotListFromResponse(String body) {
+    final decoded = jsonDecode(body);
+
+    if (decoded is List) {
+      return decoded
+          .whereType<Map>()
+          .map(
+            (item) => _snapshotFromMap(
+              item.map((key, value) => MapEntry(key.toString(), value)),
+              fallbackDeviceName: item['device_name']?.toString() ??
+                  item['deviceName']?.toString() ??
+                  item['name']?.toString() ??
+                  'unknown',
+            ),
+          )
+          .toList();
+    }
+
+    if (decoded is Map<String, dynamic>) {
+      final nested = decoded['data'] ?? decoded['actuators'] ?? decoded['items'];
+      if (nested is List) {
+        return nested
+            .whereType<Map>()
+            .map(
+              (item) => _snapshotFromMap(
+                item.map((key, value) => MapEntry(key.toString(), value)),
+                fallbackDeviceName: item['device_name']?.toString() ??
+                    item['deviceName']?.toString() ??
+                    item['name']?.toString() ??
+                    'unknown',
+              ),
+            )
+            .toList();
+      }
+    }
+
+    if (decoded is Map) {
+      final normalized = decoded.map(
+        (key, value) => MapEntry(key.toString(), value),
+      );
+      final nested = normalized['data'] ??
+          normalized['actuators'] ??
+          normalized['items'];
+      if (nested is List) {
+        return nested
+            .whereType<Map>()
+            .map(
+              (item) => _snapshotFromMap(
+                item.map((key, value) => MapEntry(key.toString(), value)),
+                fallbackDeviceName: item['device_name']?.toString() ??
+                    item['deviceName']?.toString() ??
+                    item['name']?.toString() ??
+                    'unknown',
+              ),
+            )
+            .toList();
+      }
+    }
+
+    throw Exception('Format respons status aktuator tidak dikenali');
   }
 }
 

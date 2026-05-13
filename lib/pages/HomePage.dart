@@ -24,6 +24,7 @@ class _HomePageState extends State<HomePage> {
   late Future<Map<String, dynamic>> futureData;
   Map<String, dynamic>? _lastSensorData;
   Map<String, dynamic>? _lastPredictionData;
+  List<Map<String, dynamic>> _predictionHistory = [];
   Map<String, dynamic>? _lastHarvestEstimateData;
   FarmCycle? _currentFarmCycle;
   Timer? _pollingTimer;
@@ -32,6 +33,8 @@ class _HomePageState extends State<HomePage> {
   bool _isFetching = false;
   bool _isFetchingPrediction = false;
   bool _hasPredictionError = false;
+  bool _isFetchingPredictionHistory = false;
+  bool _hasPredictionHistoryError = false;
   bool _isFetchingHarvestEstimate = false;
   bool _hasHarvestEstimateError = false;
 
@@ -66,6 +69,7 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     futureData = _fetchInitialData();
     _fetchInitialPredictionData();
+    _fetchInitialPredictionHistoryData();
     _fetchInitialHarvestEstimateData();
     _startPolling();
     _startPredictionPolling();
@@ -132,7 +136,15 @@ class _HomePageState extends State<HomePage> {
       );
 
       FarmCycle? currentCycle;
-      if (selectedCycleId != null) {
+      try {
+        currentCycle = await FarmCycleService.getActiveFarmCycle(
+          overrideBaseUrl: _overrideBaseUrl.isEmpty ? null : _overrideBaseUrl,
+        );
+      } catch (_) {
+        currentCycle = null;
+      }
+
+      if (currentCycle == null && selectedCycleId != null) {
         for (final cycle in cycles) {
           if (cycle.id == selectedCycleId) {
             currentCycle = cycle;
@@ -197,6 +209,39 @@ class _HomePageState extends State<HomePage> {
       });
     } finally {
       _isFetchingPrediction = false;
+    }
+  }
+
+  Future<void> _fetchInitialPredictionHistoryData() async {
+    _isFetchingPredictionHistory = true;
+    try {
+      final history = await AnalyticsService.getPredictionHistory(
+        limit: 15,
+        overrideBaseUrl: _overrideBaseUrl.isEmpty ? null : _overrideBaseUrl,
+        timeout: const Duration(seconds: 10),
+      );
+
+      if (!mounted) {
+        _predictionHistory = history;
+        _hasPredictionHistoryError = false;
+        return;
+      }
+
+      setState(() {
+        _predictionHistory = history;
+        _hasPredictionHistoryError = false;
+      });
+    } catch (_) {
+      if (!mounted) {
+        _hasPredictionHistoryError = true;
+        return;
+      }
+
+      setState(() {
+        _hasPredictionHistoryError = true;
+      });
+    } finally {
+      _isFetchingPredictionHistory = false;
     }
   }
 
@@ -391,6 +436,34 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+    Future<void> _refreshPredictionHistorySilently() async {
+      if (!mounted || _isFetchingPredictionHistory) return;
+
+      _isFetchingPredictionHistory = true;
+      try {
+        final history = await AnalyticsService.getPredictionHistory(
+          limit: 15,
+          overrideBaseUrl: _overrideBaseUrl.isEmpty ? null : _overrideBaseUrl,
+          timeout: const Duration(seconds: 10),
+        );
+
+        if (!mounted) return;
+
+        setState(() {
+          _predictionHistory = history;
+          _hasPredictionHistoryError = false;
+        });
+      } catch (_) {
+        if (!mounted || _predictionHistory.isNotEmpty) return;
+
+        setState(() {
+          _hasPredictionHistoryError = true;
+        });
+      } finally {
+        _isFetchingPredictionHistory = false;
+      }
+    }
+
   void refreshData() {
     if (mounted && !_isFetching) {
       setState(() {
@@ -408,6 +481,10 @@ class _HomePageState extends State<HomePage> {
 
     if (!_isFetchingPrediction) {
       _refreshPredictionSilently();
+    }
+
+    if (!_isFetchingPredictionHistory) {
+      _refreshPredictionHistorySilently();
     }
   }
 
@@ -430,6 +507,11 @@ class _HomePageState extends State<HomePage> {
             predictionData: _lastPredictionData,
             isLoading: _isFetchingPrediction && _lastPredictionData == null,
             hasError: _hasPredictionError && _lastPredictionData == null,
+            predictionHistory: _predictionHistory,
+            isHistoryLoading:
+                _isFetchingPredictionHistory && _predictionHistory.isEmpty,
+            hasHistoryError:
+                _hasPredictionHistoryError && _predictionHistory.isEmpty,
             onRetry: refreshData,
           ),
           const ProfileScreen(),

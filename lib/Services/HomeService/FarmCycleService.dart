@@ -124,6 +124,70 @@ class FarmCycleService {
   static const String baseUrl = ApiService.baseUrl;
   static const Duration requestTimeout = Duration(seconds: 20);
 
+  static Future<FarmCycle?> getActiveFarmCycle({
+    http.Client? client,
+    String? overrideBaseUrl,
+    String? authToken,
+  }) async {
+    final resolvedToken = authToken ?? await _readStoredToken();
+    if (resolvedToken == null || resolvedToken.trim().isEmpty) {
+      debugPrint('[FarmCycleService] Missing auth token for GET /farming-cycle/active');
+      throw Exception('Token autentikasi tidak ditemukan. Silakan login ulang.');
+    }
+
+    final httpClient = client ?? http.Client();
+    final shouldCloseClient = client == null;
+    final resolvedBaseUrl = _resolveBaseUrl(overrideBaseUrl);
+
+    debugPrint(
+      '[FarmCycleService] GET $resolvedBaseUrl/farming-cycle/active '
+      '(token length: ${resolvedToken.trim().length})',
+    );
+
+    try {
+      final response = await httpClient.get(
+        Uri.parse('$resolvedBaseUrl/farming-cycle/active'),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $resolvedToken',
+        },
+      ).timeout(requestTimeout);
+
+      debugPrint(
+        '[FarmCycleService] GET /farming-cycle/active status: ${response.statusCode}',
+      );
+
+      final decodedBody = _decodeResponseBody(response.body);
+
+      if (response.statusCode == 401) {
+        await _clearInvalidSession();
+        throw Exception(
+          _extractMessage(decodedBody) ??
+              'Token tidak valid atau sudah expired. Silakan login ulang.',
+        );
+      }
+
+      if (response.statusCode != 200) {
+        _logFailure(
+          'GET /farming-cycle/active',
+          response.statusCode,
+          response.body,
+        );
+
+        throw Exception(_extractMessage(decodedBody) ??
+            'Gagal mengambil farming cycle aktif (${response.statusCode})');
+      }
+
+      return _extractSingleCycle(decodedBody);
+    } on TimeoutException {
+      throw Exception('Request timeout. Server terlalu lama merespons, coba lagi.');
+    } finally {
+      if (shouldCloseClient) {
+        httpClient.close();
+      }
+    }
+  }
+
   static Future<FarmCycle?> getLatestFarmCycle({
     http.Client? client,
     String? overrideBaseUrl,
@@ -433,6 +497,51 @@ class FarmCycleService {
         .whereType<Map>()
         .map((entry) => FarmCycle.fromJson(_extractMap(entry)))
         .toList();
+  }
+
+  static FarmCycle? _extractSingleCycle(Object? decodedBody) {
+    if (decodedBody is List) {
+      if (decodedBody.isEmpty) {
+        return null;
+      }
+
+      final first = decodedBody.first;
+      if (first is Map<String, dynamic>) {
+        return FarmCycle.fromJson(first);
+      }
+      if (first is Map) {
+        return FarmCycle.fromJson(_extractMap(first));
+      }
+      return null;
+    }
+
+    if (decodedBody is Map<String, dynamic>) {
+      final map = _extractMap(decodedBody);
+      final nested = map['data'] ?? map['cycle'] ?? map['item'] ?? map['active_cycle'];
+      if (nested is Map<String, dynamic>) {
+        return FarmCycle.fromJson(nested);
+      }
+      if (nested is Map) {
+        return FarmCycle.fromJson(_extractMap(nested));
+      }
+
+      return FarmCycle.fromJson(map);
+    }
+
+    if (decodedBody is Map) {
+      final map = _extractMap(decodedBody);
+      final nested = map['data'] ?? map['cycle'] ?? map['item'] ?? map['active_cycle'];
+      if (nested is Map<String, dynamic>) {
+        return FarmCycle.fromJson(nested);
+      }
+      if (nested is Map) {
+        return FarmCycle.fromJson(_extractMap(nested));
+      }
+
+      return FarmCycle.fromJson(map);
+    }
+
+    return null;
   }
 
   static Map<String, dynamic>? _extractCycleMap(Map<String, dynamic> responseMap) {

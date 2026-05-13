@@ -498,6 +498,15 @@ class _FarmCyclePageState extends State<FarmCyclePage> {
       }
     }
 
+    if (selectedId == null) {
+      try {
+        final activeCycle = await FarmCycleService.getActiveFarmCycle();
+        selectedId = activeCycle?.id;
+      } catch (_) {
+        selectedId = null;
+      }
+    }
+
     final selectedName = selectedId == null
         ? null
         : _cycles.where((cycle) => cycle.id == selectedId).map((cycle) {

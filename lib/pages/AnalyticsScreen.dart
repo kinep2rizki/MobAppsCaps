@@ -4,14 +4,20 @@ class AnalyticsScreen extends StatelessWidget {
   const AnalyticsScreen({
     super.key,
     this.predictionData,
+    this.predictionHistory = const [],
     this.isLoading = false,
     this.hasError = false,
+    this.isHistoryLoading = false,
+    this.hasHistoryError = false,
     this.onRetry,
   });
 
   final Map<String, dynamic>? predictionData;
+  final List<Map<String, dynamic>> predictionHistory;
   final bool isLoading;
   final bool hasError;
+  final bool isHistoryLoading;
+  final bool hasHistoryError;
   final VoidCallback? onRetry;
 
   static const Color _primary = Color(0xFF2563EB);
@@ -46,6 +52,12 @@ class AnalyticsScreen extends StatelessWidget {
               _buildPredictionCard(
                 predictionData,
                 isLoading: showLoading,
+              ),
+              const SizedBox(height: 20),
+              _buildPredictionHistorySection(
+                predictionHistory,
+                isLoading: isHistoryLoading,
+                hasError: hasHistoryError,
               ),
               const SizedBox(height: 20),
               if (showError)
@@ -777,6 +789,152 @@ class AnalyticsScreen extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPredictionHistorySection(
+    List<Map<String, dynamic>> predictionHistory, {
+    required bool isLoading,
+    required bool hasError,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: _surface,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: _textPrimary.withOpacity(0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.history, color: _primary),
+              const SizedBox(width: 8),
+              const Text(
+                'Riwayat Prediksi',
+                style: TextStyle(
+                  color: _textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${predictionHistory.length} item',
+                style: const TextStyle(color: _textSecondary, fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (isLoading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: CircularProgressIndicator(strokeWidth: 2.4),
+              ),
+            )
+          else if (hasError && predictionHistory.isEmpty)
+            const Text(
+              'Gagal memuat riwayat prediksi.',
+              style: TextStyle(
+                color: _textSecondary,
+                fontSize: 14,
+              ),
+            )
+          else if (predictionHistory.isEmpty)
+            const Text(
+              'Belum ada riwayat prediksi.',
+              style: TextStyle(
+                color: _textSecondary,
+                fontSize: 14,
+              ),
+            )
+          else
+            Column(
+              children: predictionHistory
+              .take(2)
+                  .map((item) => _buildPredictionHistoryItem(item))
+                  .toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPredictionHistoryItem(Map<String, dynamic> predictionData) {
+    final status = _humanizeText(
+      _extractStringValue(
+        predictionData,
+        ['status', 'urgency'],
+        fallback: 'No data',
+      ),
+    );
+    final confidence = _optimizationScore(predictionData);
+    final confidencePercent = (confidence * 100).round();
+    final createdAt = _formatTimestamp(
+      predictionData['created_at'] ?? predictionData['prediction_date'],
+    );
+    final scoreColor = _scoreColor(confidence);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _softBlue,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _cardOutline),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  status,
+                  style: const TextStyle(
+                    color: _textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Text(
+                '$confidencePercent%',
+                style: TextStyle(
+                  color: scoreColor,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Status terakhir: ${_extractStringValue(predictionData, ['status'], fallback: '-')}',
+            style: const TextStyle(
+              color: _textSecondary,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Dibuat: $createdAt',
+            style: const TextStyle(
+              color: _textSecondary,
+              fontSize: 13,
             ),
           ),
         ],

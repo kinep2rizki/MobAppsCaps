@@ -62,13 +62,20 @@ class _ControlScreenState extends State<ControlScreen> {
     final snapshots = <String, ActuatorSnapshot>{};
     final errors = <String, String>{};
 
-    for (final deviceName in _actuatorDeviceNames) {
-      try {
-        final snapshot = await ControlService.getActuatorStatus(
-          deviceName: deviceName,
-        );
-        snapshots[deviceName] = snapshot;
-      } catch (error) {
+    try {
+      final actuatorSnapshots = await ControlService.getAllActuatorStatus();
+
+      for (final snapshot in actuatorSnapshots) {
+        snapshots[snapshot.deviceName.toLowerCase()] = snapshot;
+      }
+
+      for (final deviceName in _actuatorDeviceNames) {
+        if (!snapshots.containsKey(deviceName)) {
+          errors[deviceName] = 'Status device tidak ditemukan';
+        }
+      }
+    } catch (error) {
+      for (final deviceName in _actuatorDeviceNames) {
         errors[deviceName] = error.toString().replaceFirst('Exception: ', '');
       }
     }
